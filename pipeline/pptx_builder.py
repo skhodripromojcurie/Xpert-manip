@@ -80,7 +80,7 @@ FOOTER_Y    = 7.18   # Début du pied de page
 FOOTER_H    = 0.32   # Hauteur du pied de page
 CONTENT_TOP = 1.20   # Début de la zone de contenu
 CONTENT_H   = FOOTER_Y - CONTENT_TOP   # ~5.98" disponibles
-ROW_H       = 0.56   # Hauteur d'une ligne zébrée
+ROW_H       = 0.65   # Hauteur d'une ligne zébrée
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +338,7 @@ def _add_striped_rows(
     badge_color = badge_color or C["primary"]
     badge_w = 0.55
 
-    for i, item in enumerate(items[:10]):
+    for i, item in enumerate(items[:8]):
         y = top + i * ROW_H
         fill = C["bg_light"] if i % 2 == 0 else C["white"]
         # Ligne alternée
@@ -347,16 +347,16 @@ def _add_striped_rows(
         _add_rect(slide, left, y, badge_w, ROW_H - 0.01, badge_color)
         _add_textbox(
             slide, left, y, badge_w, ROW_H - 0.01,
-            f"{i + 1:02d}", font_size=11, bold=True,
+            f"{i + 1:02d}", font_size=12, bold=True,
             color=C["white"], align=PP_ALIGN.CENTER,
         )
-        # Texte de la ligne (tronqué si trop long)
+        # Texte de la ligne
         clean = re.sub(r"\*\*(.*?)\*\*", r"\1", item)
         clean = re.sub(r"`(.*?)`", r"\1", clean)
         _add_textbox(
-            slide, left + badge_w + 0.08, y + 0.06,
-            width - badge_w - 0.12, ROW_H - 0.12,
-            clean[:130], font_size=12, color=C["text"],
+            slide, left + badge_w + 0.10, y + 0.08,
+            width - badge_w - 0.15, ROW_H - 0.14,
+            clean[:140], font_size=14, color=C["text"],
         )
 
 
@@ -417,6 +417,41 @@ def _add_image_fitted(
         )
     except Exception as exc:
         print(f"  [PPTX] ⚠ Image non insérée ({img_path.name}) : {exc}")
+
+
+def _add_image_placeholder(
+    slide,
+    left: float, top: float, width: float, height: float,
+    label: str = "📷  Zone image",
+    hint: str = "Remplacer avec une image Canva AI",
+) -> None:
+    """
+    Affiche un cadre placeholder quand aucune image n'est disponible.
+    Visible dans Canva pour guider l'ajout d'images IA.
+    """
+    # Fond gris très clair avec bordure pointillée simulée (rectangle gris)
+    _add_rect(slide, left, top, width, height, RGBColor(0xF0, 0xF0, 0xF0))
+    # Bordure colorée (simulée par 4 barres fines)
+    bar = 0.04
+    for bx, by, bw, bh in [
+        (left, top, width, bar),
+        (left, top + height - bar, width, bar),
+        (left, top, bar, height),
+        (left + width - bar, top, bar, height),
+    ]:
+        _add_rect(slide, bx, by, bw, bh, RGBColor(0xBB, 0xBB, 0xBB))
+    # Texte centré dans le placeholder
+    center_y = top + height / 2 - 0.35
+    _add_textbox(
+        slide, left + 0.20, center_y, width - 0.40, 0.55,
+        label, font_size=16, bold=True,
+        color=RGBColor(0xAA, 0xAA, 0xAA), align=PP_ALIGN.CENTER,
+    )
+    _add_textbox(
+        slide, left + 0.20, center_y + 0.50, width - 0.40, 0.40,
+        hint, font_size=12, italic=True,
+        color=RGBColor(0xBB, 0xBB, 0xBB), align=PP_ALIGN.CENTER,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -519,8 +554,8 @@ def _slide_objectif(prs: Presentation, sections: dict, footer_text: str) -> None
     card_h = CONTENT_H - 0.20
     _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, card_h, C["primary"])
     _add_textbox(
-        slide, 0.75, CONTENT_TOP + 0.20, 12.10, card_h - 0.40,
-        text_clean, font_size=17, color=C["text"],
+        slide, 0.75, CONTENT_TOP + 0.25, 12.10, card_h - 0.50,
+        text_clean, font_size=19, color=C["text"],
     )
 
 
@@ -536,14 +571,20 @@ def _slide_notions(
     _add_header(slide, "🔑  Notions clés", C["primary"])
     _add_footer(slide, footer_text)
 
-    bullets   = _extract_bullets(sections.get("notions_cles", ""), max_items=10)
+    bullets   = _extract_bullets(sections.get("notions_cles", ""), max_items=8)
     has_image = img_path and img_path.exists()
-    row_width = 6.00 if has_image else 12.73
+    row_width = 6.00 if (has_image or True) else 12.73  # toujours laisser zone image
 
     _add_striped_rows(slide, bullets, left=0.30, top=CONTENT_TOP, width=row_width)
 
     if has_image:
-        _add_image_fitted(slide, img_path, 6.50, CONTENT_TOP, 6.50, CONTENT_H - 0.10)
+        _add_image_fitted(slide, img_path, 6.45, CONTENT_TOP, 6.55, CONTENT_H - 0.10)
+    else:
+        _add_image_placeholder(
+            slide, 6.45, CONTENT_TOP, 6.55, CONTENT_H - 0.10,
+            label="📷  Schéma anatomique",
+            hint="Remplacer avec Canva AI",
+        )
 
 
 def _slides_explication(
@@ -561,9 +602,11 @@ def _slides_explication(
         _fill_bg(slide, C["bg_light"])
         _add_header(slide, "📖  Explication structurée", C["primary"])
         _add_footer(slide, footer_text)
-        bullets = _extract_bullets(text, max_items=8)
-        _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, CONTENT_H - 0.15, C["primary"])
-        _add_bullet_list(slide, bullets, 0.75, CONTENT_TOP + 0.15, 12.10, CONTENT_H - 0.35)
+        bullets = _extract_bullets(text, max_items=6)
+        _add_content_card(slide, 0.40, CONTENT_TOP, 7.80, CONTENT_H - 0.15, C["primary"])
+        _add_bullet_list(slide, bullets, 0.75, CONTENT_TOP + 0.20, 7.35, CONTENT_H - 0.40, font_size=17)
+        _add_image_placeholder(slide, 8.40, CONTENT_TOP, 4.60, CONTENT_H - 0.15,
+                                label="📷  Illustration", hint="Remplacer avec Canva AI")
         return
 
     for i, (sub_title, sub_content) in enumerate(subsections):
@@ -573,29 +616,35 @@ def _slides_explication(
         _add_footer(slide, footer_text)
 
         is_last   = (i == len(subsections) - 1)
-        has_image = img_path and img_path.exists() and is_last
-        col_w     = 6.00 if has_image else 12.53
+        img_avail = img_path and img_path.exists() and is_last
+
+        # Toujours réserver une zone image à droite pour la lisibilité
+        col_w = 7.80
 
         # Carte contenu avec barre rouge gauche
         _add_content_card(slide, 0.40, CONTENT_TOP, col_w, CONTENT_H - 0.15, C["primary"])
 
-        bullets = _extract_bullets(sub_content, max_items=8)
+        bullets = _extract_bullets(sub_content, max_items=6)
         if bullets:
             _add_bullet_list(
                 slide, bullets,
-                0.75, CONTENT_TOP + 0.15, col_w - 0.40, CONTENT_H - 0.35,
-                font_size=15,
+                0.75, CONTENT_TOP + 0.20, col_w - 0.40, CONTENT_H - 0.40,
+                font_size=17,
             )
         else:
             text_clean = re.sub(r"\*\*(.*?)\*\*", r"\1", sub_content)
             text_clean = re.sub(r"^#+\s+", "", text_clean, flags=re.MULTILINE)
             _add_textbox(
-                slide, 0.75, CONTENT_TOP + 0.15, col_w - 0.40, CONTENT_H - 0.35,
-                text_clean[:900], font_size=14, color=C["text"],
+                slide, 0.75, CONTENT_TOP + 0.20, col_w - 0.40, CONTENT_H - 0.40,
+                text_clean[:700], font_size=16, color=C["text"],
             )
 
-        if has_image:
-            _add_image_fitted(slide, img_path, 6.55, CONTENT_TOP, 6.45, CONTENT_H - 0.15)
+        # Zone image droite : vraie image ou placeholder
+        if img_avail:
+            _add_image_fitted(slide, img_path, 8.40, CONTENT_TOP, 4.60, CONTENT_H - 0.15)
+        else:
+            _add_image_placeholder(slide, 8.40, CONTENT_TOP, 4.60, CONTENT_H - 0.15,
+                                    label="📷  Illustration", hint="Remplacer avec Canva AI")
 
 
 def _slide_terrain(prs: Presentation, sections: dict, footer_text: str) -> None:
@@ -607,31 +656,31 @@ def _slide_terrain(prs: Presentation, sections: dict, footer_text: str) -> None:
 
     bullets = _extract_bullets(sections.get("point_terrain", ""), max_items=12)
 
-    if len(bullets) > 6:
+    if len(bullets) > 5:
         mid = len(bullets) // 2
         left_bullets  = bullets[:mid]
         right_bullets = bullets[mid:]
 
         # Colonne gauche
-        _add_content_card(slide, 0.30, CONTENT_TOP, 6.20, CONTENT_H - 0.10, C["orange"])
+        _add_content_card(slide, 0.30, CONTENT_TOP, 6.10, CONTENT_H - 0.10, C["orange"])
         _add_bullet_list(
             slide, left_bullets,
-            0.65, CONTENT_TOP + 0.15, 5.75, CONTENT_H - 0.35,
-            font_size=14, bullet_char="→", text_color=C["text"],
+            0.65, CONTENT_TOP + 0.20, 5.65, CONTENT_H - 0.40,
+            font_size=16, bullet_char="→", text_color=C["text"],
         )
         # Colonne droite
-        _add_content_card(slide, 6.80, CONTENT_TOP, 6.20, CONTENT_H - 0.10, C["orange"])
+        _add_content_card(slide, 6.70, CONTENT_TOP, 6.30, CONTENT_H - 0.10, C["orange"])
         _add_bullet_list(
             slide, right_bullets,
-            7.15, CONTENT_TOP + 0.15, 5.75, CONTENT_H - 0.35,
-            font_size=14, bullet_char="→", text_color=C["text"],
+            7.05, CONTENT_TOP + 0.20, 5.85, CONTENT_H - 0.40,
+            font_size=16, bullet_char="→", text_color=C["text"],
         )
     else:
         _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, CONTENT_H - 0.10, C["orange"])
         _add_bullet_list(
             slide, bullets,
-            0.75, CONTENT_TOP + 0.15, 12.10, CONTENT_H - 0.35,
-            font_size=15, bullet_char="→", text_color=C["text"],
+            0.75, CONTENT_TOP + 0.20, 12.10, CONTENT_H - 0.40,
+            font_size=17, bullet_char="→", text_color=C["text"],
         )
 
 
@@ -646,29 +695,29 @@ def _slide_erreurs(prs: Presentation, sections: dict, footer_text: str) -> None:
     error_blocks = _parse_error_blocks(text)
 
     if error_blocks:
-        card_h = 0.88
-        for i, (err, fix) in enumerate(error_blocks[:6]):
-            y    = CONTENT_TOP + i * (card_h + 0.05)
+        card_h = min((CONTENT_H - 0.10) / min(len(error_blocks), 5) - 0.06, 1.10)
+        for i, (err, fix) in enumerate(error_blocks[:5]):
+            y    = CONTENT_TOP + i * (card_h + 0.06)
             fill = C["bg_light"] if i % 2 == 0 else C["white"]
             _add_rect(slide, 0.30, y, 12.73, card_h, fill)
             _add_rect(slide, 0.30, y, 0.20, card_h, C["primary"])
             # Ligne erreur
             _add_textbox(
-                slide, 0.60, y + 0.08, 12.00, 0.38,
-                f"❌  {err[:120]}", font_size=13, bold=True, color=C["primary"],
+                slide, 0.60, y + 0.08, 12.00, 0.44,
+                f"❌  {err[:120]}", font_size=15, bold=True, color=C["primary"],
             )
             if fix:
                 _add_textbox(
-                    slide, 0.60, y + 0.46, 12.00, card_h - 0.52,
-                    f"✅  {fix[:150]}", font_size=12, color=C["green"],
+                    slide, 0.60, y + 0.50, 12.00, card_h - 0.56,
+                    f"✅  {fix[:150]}", font_size=14, color=C["green"],
                 )
     else:
-        bullets = _extract_bullets(text, max_items=8)
+        bullets = _extract_bullets(text, max_items=6)
         _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, CONTENT_H - 0.10, C["primary"])
         _add_bullet_list(
             slide, bullets,
-            0.75, CONTENT_TOP + 0.15, 12.10, CONTENT_H - 0.35,
-            font_size=15, text_color=C["primary"],
+            0.75, CONTENT_TOP + 0.20, 12.10, CONTENT_H - 0.40,
+            font_size=17, text_color=C["primary"],
         )
 
 
@@ -690,32 +739,32 @@ def _slide_quiz(prs: Presentation, sections: dict, footer_text: str) -> None:
         _add_footer(slide, footer_text)
 
         # Hauteur de bloc adaptative
-        block_h = min((CONTENT_H - 0.10) / max(len(chunk), 1) - 0.05, 1.35)
+        block_h = min((CONTENT_H - 0.10) / max(len(chunk), 1) - 0.06, 1.50)
 
         for j, (question, reponse) in enumerate(chunk):
             num  = j + 1 + chunk_idx * 4
-            y    = CONTENT_TOP + j * (block_h + 0.05)
+            y    = CONTENT_TOP + j * (block_h + 0.06)
             fill = C["bg_light"] if j % 2 == 0 else C["white"]
 
             # Ligne de fond
             _add_rect(slide, 0.30, y, 12.73, block_h, fill)
             # Badge bleu (numéro de question)
-            _add_rect(slide, 0.30, y, 0.55, block_h, C["blue"])
+            _add_rect(slide, 0.30, y, 0.65, block_h, C["blue"])
             _add_textbox(
-                slide, 0.30, y, 0.55, block_h,
-                f"Q{num}", font_size=12, bold=True,
+                slide, 0.30, y, 0.65, block_h,
+                f"Q{num}", font_size=13, bold=True,
                 color=C["white"], align=PP_ALIGN.CENTER,
             )
             # Question
             _add_textbox(
-                slide, 0.95, y + 0.06, 12.00, 0.42,
-                question[:120], font_size=13, bold=True, color=C["text"],
+                slide, 1.05, y + 0.08, 11.90, 0.48,
+                question[:120], font_size=15, bold=True, color=C["text"],
             )
             # Réponse
             if reponse:
                 _add_textbox(
-                    slide, 0.95, y + 0.48, 12.00, block_h - 0.52,
-                    f"▸ {reponse[:200]}", font_size=12, color=C["text_muted"],
+                    slide, 1.05, y + 0.55, 11.90, block_h - 0.60,
+                    f"▸ {reponse[:200]}", font_size=13, color=C["text_muted"],
                 )
 
 
@@ -733,12 +782,17 @@ def _slide_resume(
 
     bullets   = _extract_bullets(sections.get("resume", ""), max_items=8)
     has_image = img_path and img_path.exists()
-    row_width = 6.00 if has_image else 12.73
 
-    _add_striped_rows(slide, bullets, left=0.30, top=CONTENT_TOP, width=row_width, badge_color=C["navy"])
+    _add_striped_rows(slide, bullets, left=0.30, top=CONTENT_TOP, width=6.00, badge_color=C["navy"])
 
     if has_image:
         _add_image_fitted(slide, img_path, 6.50, CONTENT_TOP, 6.50, CONTENT_H - 0.10)
+    else:
+        _add_image_placeholder(
+            slide, 6.50, CONTENT_TOP, 6.50, CONTENT_H - 0.10,
+            label="📷  Schéma de synthèse",
+            hint="Remplacer avec Canva AI",
+        )
 
 
 def _slide_closing(prs: Presentation, specialty: str) -> None:
