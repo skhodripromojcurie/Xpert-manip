@@ -1,21 +1,21 @@
-# requirements.txt
-# ================
-# Dépendances du Xpermanip Content Engine
+# requirements.txt — Xpermanip Content Engine
 #
 # Installation :
+#   python -m venv .venv
+#   source .venv/bin/activate        # Linux/Mac
+#   .venv\Scripts\activate           # Windows
 #   pip install -r requirements.txt
 
+# --- API Claude (génération IA des fiches) ---
+anthropic>=0.49.0          # SDK Python — client Claude API
+
 # --- Parseurs de documents ---
-pdfplumber>=0.10.0      # Extraction de texte PDF (meilleure gestion des layouts)
-python-docx>=1.1.0      # Lecture des fichiers Word .docx
-python-pptx>=0.6.23     # Lecture des fichiers PowerPoint .pptx
+pdfplumber>=0.10.0         # Extraction texte PDF (meilleure gestion des layouts)
+python-docx>=1.1.0         # Lecture fichiers Word .docx
+python-pptx>=0.6.23        # Lecture fichiers PowerPoint .pptx
 
-# --- Configuration ---
-pyyaml>=6.0.1           # Lecture du fichier config.yaml
+# --- Export Notion (optionnel) ---
+notion-client>=2.2.1       # Client API Notion (requis seulement avec --export-notion)
 
-# --- Utilitaires standards (inclus dans Python 3.10+, listés pour clarté) ---
-# pathlib   : gestion des chemins (stdlib)
-# re        : expressions régulières pour le nettoyage (stdlib)
-# logging   : journalisation (stdlib)
-# argparse  : interface CLI (stdlib)
-# unicodedata : normalisation des caractères accentués (stdlib)
+# --- Utilitaires standard (inclus dans Python 3.10+) ---
+# re, pathlib, json, argparse, os, datetime — stdlib, pas besoin d'installer

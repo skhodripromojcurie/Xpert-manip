@@ -9,153 +9,127 @@ Destiné aux formateurs et étudiants **MERM** (Manipulateurs En Électroradiolo
 ## Objectif
 
 Transformer des supports de cours bruts (PDF, DOCX, PPTX, TXT) en fiches pédagogiques
-homogènes au format Markdown, prêtes pour relecture et publication dans Notion.
+homogènes au format Markdown, via l'IA (Claude), prêtes pour relecture et publication.
 
 Le système **ne copie pas** les sources : il synthétise, réécrit et structure.
 **La validation humaine est obligatoire** avant toute diffusion.
 
 ---
 
-## Architecture du projet
+## Architecture
 
 ```
-xpermanip-content-engine/
-├── input/                        # Sources brutes (organisées par spécialité/thème)
+xpermanip/
+├── pipeline/
+│   ├── main.py              Orchestrateur des 6 étapes (CLI)
+│   ├── fiche_generator.py   Génération IA via Claude (claude-opus-4-6)
+│   ├── canva_exporter.py    Mise en forme visuelle HTML + JSON Canva
+│   └── notion_exporter.py   Export vers base Notion
+├── parsers/
+│   └── document_parser.py   Lit PDF / DOCX / PPTX / TXT + nettoyage
+├── input/                   Sources brutes (organisées par spécialité/thème)
 │   └── scanner/
-│       └── embolie_pulmonaire/
-│           ├── cours_A.pdf
-│           └── cours_B.docx
-├── parsed/                       # Texte brut extrait (généré automatiquement)
-├── cleaned/                      # Texte nettoyé (généré automatiquement)
+│       ├── embolie_pulmonaire/
+│       └── dissection_aortique/
+├── parsed/                  Texte brut extrait (auto-généré)
+├── cleaned/                 Texte nettoyé (auto-généré)
 ├── outputs/
-│   └── markdown/                 # Fiches Markdown générées
+│   ├── markdown/            Fiches Markdown générées
+│   └── canva/               Exports HTML + JSON Canva
 ├── templates/
-│   └── fiche_template.md         # Template obligatoire de fiche pédagogique
-├── logs/                         # Fichiers de log
-├── src/
-│   ├── parsers/
-│   │   ├── base_parser.py        # Classe abstraite commune
-│   │   ├── pdf_parser.py         # Parseur PDF (pdfplumber)
-│   │   ├── docx_parser.py        # Parseur Word (python-docx)
-│   │   ├── pptx_parser.py        # Parseur PowerPoint (python-pptx)
-│   │   └── txt_parser.py         # Parseur texte brut
-│   ├── cleaner.py                # Nettoyage et normalisation du texte
-│   ├── theme_manager.py          # Regroupement des sources par thème
-│   ├── sheet_generator.py        # Génération de la fiche Markdown
-│   └── utils.py                  # Utilitaires partagés (logger, router, helpers)
-├── main.py                       # Point d'entrée CLI
-├── config.yaml                   # Configuration du projet
-└── requirements.txt
+│   └── fiche_template.md    Template de référence (8 sections)
+├── logs/
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## Fichiers Python — Rôle de chacun
+## Fichiers Python
 
 | Fichier | Rôle |
 |---|---|
-| `main.py` | Point d'entrée CLI, orchestre le pipeline complet |
-| `src/parsers/base_parser.py` | Classe abstraite dont héritent tous les parseurs |
-| `src/parsers/pdf_parser.py` | Extrait le texte d'un PDF page par page |
-| `src/parsers/docx_parser.py` | Extrait les paragraphes d'un fichier Word |
-| `src/parsers/pptx_parser.py` | Extrait les diapositives et notes d'un PowerPoint |
-| `src/parsers/txt_parser.py` | Lit un fichier texte brut avec gestion d'encodage |
-| `src/cleaner.py` | Nettoie et normalise les textes extraits |
-| `src/theme_manager.py` | Gère les thèmes, liste les sources, fusionne les textes |
-| `src/sheet_generator.py` | Génère la fiche pédagogique Markdown finale |
-| `src/utils.py` | Logger, routeur de parseurs, helpers fichiers |
+| `pipeline/main.py` | CLI + orchestration des 6 étapes |
+| `pipeline/fiche_generator.py` | Appel Claude API, génération Markdown structurée |
+| `pipeline/canva_exporter.py` | Export HTML visuel + JSON Bulk Create Canva |
+| `pipeline/notion_exporter.py` | Création de pages Notion via API |
+| `parsers/document_parser.py` | Extraction texte (PDF/DOCX/PPTX/TXT) + nettoyage |
 
 ---
 
-## Pipeline de traitement
+## Pipeline (6 étapes)
 
 ```
 input/scanner/embolie_pulmonaire/
         |
-[Etape 1 - Parsing]     : PDFParser / DOCXParser / PPTXParser / TXTParser
+Etape 1 - Scan       : liste les fichiers sources du theme
         |
-parsed/scanner/embolie_pulmonaire/*.txt
+Etape 2 - Parsing    : document_parser.parse() -> parsed/
         |
-[Etape 2 - Nettoyage]   : cleaner.py
+Etape 3 - Nettoyage  : document_parser.clean() -> cleaned/
         |
-cleaned/scanner/embolie_pulmonaire/*.txt
+Etape 4 - Fusion     : merge des textes nettoyes du theme
         |
-[Etape 3 - Fusion]      : theme_manager.py -> merge_sources()
+Etape 5 - Generation : Claude claude-opus-4-6 -> fiche Markdown
         |
-[Etape 4 - Generation]  : sheet_generator.py -> fiche Markdown
+Etape 6 - Export     : outputs/markdown/ + Canva (opt.) + Notion (opt.)
         |
-outputs/markdown/scanner/embolie_pulmonaire.md
-        |
-[Validation humaine]    : relecture + corrections avant publication Notion
+[Validation humaine] : relecture avant publication
 ```
-
----
-
-## Plan de développement MVP
-
-### Phase 1 - Parseurs [Etape suivante]
-- [ ] Implémenter `TXTParser.extract_text()`
-- [ ] Implémenter `PDFParser.extract_text()` avec pdfplumber
-- [ ] Implémenter `DOCXParser.extract_text()` avec python-docx
-- [ ] Implémenter `PPTXParser.extract_text()` avec python-pptx
-- [ ] Tester sur des fichiers réels du thème "scanner"
-
-### Phase 2 - Nettoyage
-- [ ] Implémenter toutes les fonctions de `cleaner.py`
-- [ ] Tester et calibrer sur des textes extraits réels
-- [ ] Valider que le nettoyage ne supprime pas de contenu utile
-
-### Phase 3 - Gestion des thèmes
-- [ ] Implémenter `ThemeManager` (list, get_sources, merge)
-- [ ] Tester avec plusieurs fichiers d'un même thème
-
-### Phase 4 - Génération de fiches
-- [ ] Implémenter `SheetGenerator.generate()`
-- [ ] Valider le respect du template obligatoire
-- [ ] Tester la qualité éditoriale sur "embolie_pulmonaire"
-
-### Phase 5 - CLI et polissage
-- [ ] Implémenter `main.py` (argparse + orchestration)
-- [ ] Tester le pipeline end-to-end
-- [ ] Documenter les commandes d'usage
 
 ---
 
 ## Installation
 
 ```bash
+# Cloner le projet
+git clone <url>
+cd xpermanip-content-engine
+
 # Créer un environnement virtuel
 python -m venv .venv
-source .venv/bin/activate   # Linux/Mac
-.venv\Scripts\activate      # Windows
+source .venv/bin/activate     # Linux/Mac
+.venv\Scripts\activate        # Windows
 
 # Installer les dépendances
 pip install -r requirements.txt
+
+# Configurer la clé API Claude (obligatoire)
+export ANTHROPIC_API_KEY="sk-ant-..."   # Linux/Mac
+set ANTHROPIC_API_KEY=sk-ant-...        # Windows
+
+# Optionnel : export Notion
+export NOTION_TOKEN="secret_..."
+export NOTION_DATABASE_ID="xxxxxxxx..."
 ```
 
 ---
 
-## Usage (une fois implémenté)
+## Usage
 
 ```bash
-# Lister les thèmes disponibles
-python main.py --list
+# Lister les spécialités et thèmes disponibles
+python -m pipeline.main --list
 
-# Traiter un thème précis
-python main.py --specialty scanner --theme embolie_pulmonaire
+# Générer une fiche pour un thème précis
+python -m pipeline.main --specialty scanner --theme embolie_pulmonaire
 
-# Traiter tous les thèmes d'une spécialité
-python main.py --specialty scanner
+# Générer toutes les fiches d'une spécialité
+python -m pipeline.main --specialty scanner
 
-# N'exécuter que le parsing
-python main.py --specialty scanner --theme dissection_aortique --step parse
+# Avec export Canva (HTML + JSON)
+python -m pipeline.main --specialty scanner --theme embolie_pulmonaire --export-canva
+
+# Avec export Notion
+python -m pipeline.main --specialty scanner --theme embolie_pulmonaire --export-notion
+
+# Sauter le parsing (utiliser les textes déjà nettoyés dans cleaned/)
+python -m pipeline.main --specialty scanner --theme embolie_pulmonaire --skip-parse
 ```
 
 ---
 
 ## Structure des sources (input/)
-
-Placer les fichiers sources dans le dossier correspondant :
 
 ```
 input/
@@ -169,9 +143,7 @@ input/
 
 ---
 
-## Template de fiche pédagogique
-
-Chaque fiche générée contient **8 sections obligatoires** :
+## Template de fiche (8 sections)
 
 1. **Titre**
 2. **Objectif pédagogique**
@@ -187,7 +159,8 @@ Chaque fiche générée contient **8 sections obligatoires** :
 ## Philosophie
 
 > Cet outil est un **assistant de production**, pas un auteur autonome.
-> Il accélère la fabrication, mais la qualité pédagogique finale reste sous responsabilité humaine.
+> Il accélère la fabrication, mais la qualité pédagogique finale
+> reste sous responsabilité humaine.
 
 ---
 
