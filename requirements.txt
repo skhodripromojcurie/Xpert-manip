@@ -1,0 +1,21 @@
+# requirements.txt
+# ================
+# Dépendances du Xpermanip Content Engine
+#
+# Installation :
+#   pip install -r requirements.txt
+
+# --- Parseurs de documents ---
+pdfplumber>=0.10.0      # Extraction de texte PDF (meilleure gestion des layouts)
+python-docx>=1.1.0      # Lecture des fichiers Word .docx
+python-pptx>=0.6.23     # Lecture des fichiers PowerPoint .pptx
+
+# --- Configuration ---
+pyyaml>=6.0.1           # Lecture du fichier config.yaml
+
+# --- Utilitaires standards (inclus dans Python 3.10+, listés pour clarté) ---
+# pathlib   : gestion des chemins (stdlib)
+# re        : expressions régulières pour le nettoyage (stdlib)
+# logging   : journalisation (stdlib)
+# argparse  : interface CLI (stdlib)
+# unicodedata : normalisation des caractères accentués (stdlib)

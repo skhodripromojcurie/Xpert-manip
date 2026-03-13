@@ -1,0 +1,56 @@
+# config.yaml
+# ===========
+# Configuration globale du Xpermanip Content Engine.
+# Modifier ce fichier pour adapter les chemins et paramètres.
+
+# ---------------------------------------------------------------
+# Chemins des dossiers principaux
+# ---------------------------------------------------------------
+paths:
+  input:   input/        # Sources brutes, organisées par spécialité/thème
+  parsed:  parsed/       # Texte brut extrait par les parseurs
+  cleaned: cleaned/      # Texte nettoyé et normalisé
+  output:  outputs/markdown/  # Fiches pédagogiques générées
+  logs:    logs/         # Fichiers de log
+
+# ---------------------------------------------------------------
+# Paramètres du nettoyage (cleaner.py)
+# ---------------------------------------------------------------
+cleaning:
+  max_consecutive_newlines: 2   # Nombre max de sauts de ligne consécutifs
+  min_line_length: 3            # Ignorer les lignes de moins de N caractères
+  repeated_line_threshold: 3    # N répétitions = entête/pied de page à supprimer
+
+# ---------------------------------------------------------------
+# Paramètres de la génération de fiches (sheet_generator.py)
+# ---------------------------------------------------------------
+generation:
+  template: templates/fiche_template.md
+  output_encoding: utf-8
+  # Sections obligatoires de chaque fiche (dans l'ordre)
+  required_sections:
+    - title
+    - objective
+    - key_concepts
+    - explanation
+    - field_tips
+    - common_errors
+    - quiz
+    - summary
+
+# ---------------------------------------------------------------
+# Formats de fichiers supportés par les parseurs
+# ---------------------------------------------------------------
+parsers:
+  supported_extensions:
+    - .pdf
+    - .docx
+    - .pptx
+    - .txt
+
+# ---------------------------------------------------------------
+# Journalisation
+# ---------------------------------------------------------------
+logging:
+  level: INFO          # DEBUG, INFO, WARNING, ERROR
+  file: logs/engine.log
