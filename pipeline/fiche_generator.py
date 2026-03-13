@@ -166,7 +166,7 @@ def generate_fiche(
             {"role": "user", "content": prompt},
         ],
         max_tokens=16000,
-        temperature=0.3,
+        temperature=0.4,
     )
 
     text = completion.choices[0].message.content.strip()
@@ -227,33 +227,41 @@ EXIGENCES DE LONGUEUR ET DE CONTENU PAR SECTION :
 2. "objectif" : 3 à 4 phrases directes et mesurables couvrant les compétences \
 théoriques ET pratiques visées.
 
-3. "notions_cles" : 12 à 15 notions essentielles. Pour chaque notion : \
-une ligne de titre en gras (**Notion**) suivie d'1 à 2 phrases d'explication \
-du POURQUOI et du COMMENT. Utilise des sous-groupes (### Anatomie, \
-### Physique IRM, ### Protocole, etc.).
+3. "notions_cles" : 15 à 20 notions essentielles organisées par sous-groupes \
+(### Anatomie, ### Physique IRM, ### Protocole, ### Sémiologie, etc.). \
+Pour chaque notion : titre en gras (**Notion**) + 2 à 3 phrases expliquant \
+le POURQUOI, le COMMENT, les valeurs numériques ou paramètres associés. \
+MINIMUM 600 caractères pour cette section.
 
-4. "explication" : Développement structuré en MINIMUM 5 sous-sections (### Titre). \
-Chaque sous-section doit contenir 2 à 4 paragraphes avec exemples concrets, \
-valeurs numériques, paramètres techniques, éléments de sémiologie. \
-Utilise des tableaux Markdown quand pertinent (protocoles, séquences, \
-paramètres). Minimum 800 mots.
+4. "explication" : Développement structuré en MINIMUM 6 sous-sections (### Titre). \
+Chaque sous-section doit contenir 3 à 5 paragraphes denses avec exemples concrets, \
+valeurs numériques, paramètres techniques, éléments de sémiologie, cas cliniques. \
+Utilise des tableaux Markdown pour les protocoles, séquences et paramètres. \
+MINIMUM 1500 mots pour cette section. Chaque ### doit faire au moins 200 mots.
 
-5. "point_terrain" : 10 à 14 points pratiques CONCRETS du rôle MERM. \
-Format : **Point** suivi du détail (préparation patient, protocole injection, \
-positionnement, antennes, séquences à adapter, communications équipe, \
-vigilance effets secondaires, gestion artefacts). \
-Chaque point doit répondre à "que fait le MERM concrètement et POURQUOI".
+5. "point_terrain" : 12 à 16 points pratiques CONCRETS du rôle MERM. \
+Format : **Point** suivi de 2 à 3 phrases de détail (préparation patient, \
+protocole injection, positionnement, antennes, séquences à adapter, \
+communications équipe, vigilance effets secondaires, gestion artefacts). \
+Chaque point doit répondre à "que fait le MERM concrètement et POURQUOI". \
+MINIMUM 800 caractères pour cette section.
 
-6. "erreurs" : 6 à 8 erreurs fréquentes. Pour chaque erreur : \
-❌ **Erreur** : description → ✅ **Correction** : solution précise. \
-Inclure les causes et conséquences cliniques éventuelles.
+6. "erreurs" : 8 à 10 erreurs fréquentes. Pour chaque erreur : \
+❌ **Erreur** : description précise de la faute et ses conséquences → \
+✅ **Correction** : solution concrète avec justification physiologique ou technique. \
+MINIMUM 700 caractères pour cette section.
 
-7. "quiz" : 6 à 8 questions progressives (des plus simples aux plus complexes). \
-**Q1.** Question ?\\n> **R.** Réponse développée en 3 à 5 phrases avec justification. \
-Couvrir : anatomie, physique, protocole, sémiologie, cas cliniques.
+7. "quiz" : 8 à 10 questions progressives (des plus simples aux plus complexes). \
+**Q1.** Question ?\\n> **R.** Réponse développée en 4 à 6 phrases avec justification \
+physique, anatomique ou clinique selon le cas. \
+Couvrir : anatomie, physique, protocole, sémiologie, cas cliniques, urgences. \
+MINIMUM 800 caractères pour cette section.
 
-8. "resume" : 6 à 8 points de synthèse essentiels à retenir pour l'examen \
-et pour la pratique professionnelle.
+8. "resume" : 8 à 10 points de synthèse essentiels, chacun avec une phrase \
+de détail pratique. MINIMUM 400 caractères pour cette section.
+
+IMPORTANT : La longueur totale attendue est d'environ 4000 à 5000 tokens. \
+Ne raccourcis PAS les sections. Développe chaque point complètement.
 
 Réponds UNIQUEMENT avec un objet JSON valide contenant exactement ces 8 clés \
 (valeurs en Markdown, pas de JSON imbriqué) :

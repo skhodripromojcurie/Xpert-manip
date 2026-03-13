@@ -338,7 +338,7 @@ def _add_striped_rows(
     badge_color = badge_color or C["primary"]
     badge_w = 0.55
 
-    for i, item in enumerate(items[:8]):
+    for i, item in enumerate(items[:12]):
         y = top + i * ROW_H
         fill = C["bg_light"] if i % 2 == 0 else C["white"]
         # Ligne alternée
@@ -356,7 +356,7 @@ def _add_striped_rows(
         _add_textbox(
             slide, left + badge_w + 0.10, y + 0.08,
             width - badge_w - 0.15, ROW_H - 0.14,
-            clean[:140], font_size=14, color=C["text"],
+            clean[:200], font_size=14, color=C["text"],
         )
 
 
@@ -571,7 +571,7 @@ def _slide_notions(
     _add_header(slide, "🔑  Notions clés", C["primary"])
     _add_footer(slide, footer_text)
 
-    bullets   = _extract_bullets(sections.get("notions_cles", ""), max_items=8)
+    bullets   = _extract_bullets(sections.get("notions_cles", ""), max_items=12)
     has_image = img_path and img_path.exists()
     row_width = 6.00 if (has_image or True) else 12.73  # toujours laisser zone image
 
@@ -602,9 +602,9 @@ def _slides_explication(
         _fill_bg(slide, C["bg_light"])
         _add_header(slide, "📖  Explication structurée", C["primary"])
         _add_footer(slide, footer_text)
-        bullets = _extract_bullets(text, max_items=6)
+        bullets = _extract_bullets(text, max_items=10)
         _add_content_card(slide, 0.40, CONTENT_TOP, 7.80, CONTENT_H - 0.15, C["primary"])
-        _add_bullet_list(slide, bullets, 0.75, CONTENT_TOP + 0.20, 7.35, CONTENT_H - 0.40, font_size=17)
+        _add_bullet_list(slide, bullets, 0.75, CONTENT_TOP + 0.20, 7.35, CONTENT_H - 0.40, font_size=16)
         _add_image_placeholder(slide, 8.40, CONTENT_TOP, 4.60, CONTENT_H - 0.15,
                                 label="📷  Illustration", hint="Remplacer avec Canva AI")
         return
@@ -624,19 +624,19 @@ def _slides_explication(
         # Carte contenu avec barre rouge gauche
         _add_content_card(slide, 0.40, CONTENT_TOP, col_w, CONTENT_H - 0.15, C["primary"])
 
-        bullets = _extract_bullets(sub_content, max_items=6)
+        bullets = _extract_bullets(sub_content, max_items=10)
         if bullets:
             _add_bullet_list(
                 slide, bullets,
                 0.75, CONTENT_TOP + 0.20, col_w - 0.40, CONTENT_H - 0.40,
-                font_size=17,
+                font_size=15,
             )
         else:
             text_clean = re.sub(r"\*\*(.*?)\*\*", r"\1", sub_content)
             text_clean = re.sub(r"^#+\s+", "", text_clean, flags=re.MULTILINE)
             _add_textbox(
                 slide, 0.75, CONTENT_TOP + 0.20, col_w - 0.40, CONTENT_H - 0.40,
-                text_clean[:700], font_size=16, color=C["text"],
+                text_clean[:1200], font_size=15, color=C["text"],
             )
 
         # Zone image droite : vraie image ou placeholder
@@ -695,8 +695,8 @@ def _slide_erreurs(prs: Presentation, sections: dict, footer_text: str) -> None:
     error_blocks = _parse_error_blocks(text)
 
     if error_blocks:
-        card_h = min((CONTENT_H - 0.10) / min(len(error_blocks), 5) - 0.06, 1.10)
-        for i, (err, fix) in enumerate(error_blocks[:5]):
+        card_h = min((CONTENT_H - 0.10) / min(len(error_blocks), 6) - 0.06, 1.10)
+        for i, (err, fix) in enumerate(error_blocks[:6]):
             y    = CONTENT_TOP + i * (card_h + 0.06)
             fill = C["bg_light"] if i % 2 == 0 else C["white"]
             _add_rect(slide, 0.30, y, 12.73, card_h, fill)
@@ -780,7 +780,7 @@ def _slide_resume(
     _add_header(slide, "📝  Résumé final", C["primary"])
     _add_footer(slide, footer_text)
 
-    bullets   = _extract_bullets(sections.get("resume", ""), max_items=8)
+    bullets   = _extract_bullets(sections.get("resume", ""), max_items=10)
     has_image = img_path and img_path.exists()
 
     _add_striped_rows(slide, bullets, left=0.30, top=CONTENT_TOP, width=6.00, badge_color=C["navy"])
