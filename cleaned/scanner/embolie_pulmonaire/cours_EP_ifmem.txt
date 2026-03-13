@@ -1,0 +1,206 @@
+EMBOLIE PULMONAIRE — COURS DE RADIODIAGNOSTIC
+Institut de Formation aux Métiers de la Santé
+Module : Scanner thoracique d'urgence
+
+=======================================================
+I. DÉFINITION ET ÉPIDÉMIOLOGIE
+=======================================================
+
+L'embolie pulmonaire (EP) est une obstruction brutale d'une ou plusieurs artères pulmonaires par un thrombus, le plus souvent d'origine veineuse profonde (TVP des membres inférieurs dans 90 % des cas).
+
+Épidémiologie :
+- 3e cause de mortalité cardiovasculaire en France
+- Incidence : 60 000 à 100 000 cas/an en France
+- Mortalité : 10 à 30 % sans traitement, < 3 % avec traitement adapté
+- Sex ratio : légèrement féminin, mais augmente avec l'âge chez les deux sexes
+
+Facteurs de risque principaux :
+- Immobilisation prolongée (alitement, long voyage en avion ou voiture)
+- Chirurgie récente (surtout orthopédique : prothèse de hanche, genou)
+- Cancer actif (hypercoagulabilité tumorale)
+- Grossesse et post-partum
+- Contraception orale combinée (oestroprogestatifs)
+- Antécédents personnels ou familiaux de MVTE
+- Obésité, tabagisme, insuffisance cardiaque
+
+=======================================================
+II. PHYSIOPATHOLOGIE
+=======================================================
+
+Le thrombus se forme le plus souvent dans les veines profondes des membres inférieurs (TVP proximale : iliaque, fémorale, poplitée). Il se détache et migre dans la circulation veineuse, traverse le coeur droit, et vient obstruer tout ou partie du réseau artériel pulmonaire.
+
+Conséquences hémodynamiques :
+- Augmentation des résistances vasculaires pulmonaires
+- Dilatation et dysfonction du ventricule droit (VD)
+- Chute du débit cardiaque → choc obstructif dans les formes graves
+- Infarctus pulmonaire si obstruction des artères périphériques
+
+Conséquences respiratoires :
+- Effet espace mort (zones ventilées mais non perfusées)
+- Hypoxémie, tachycardie, polypnée
+
+=======================================================
+III. PRÉSENTATION CLINIQUE
+=======================================================
+
+Signes fonctionnels :
+- Dyspnée brutale (signe le plus fréquent, 80 %)
+- Douleur thoracique (pleurale si infarctus, angineuse si EP massive)
+- Hémoptysie (signe d'infarctus pulmonaire, inconstant)
+- Syncope (EP grave avec effondrement hémodynamique)
+- Toux sèche
+
+Signes physiques :
+- Tachycardie (fréquente)
+- Polypnée
+- Cyanose (formes graves)
+- Signes de TVP associée (œdème, rougeur, douleur du mollet) dans 30 % des cas
+
+Score de Wells (probabilité clinique pré-test) :
+- TVP cliniquement probable : +3
+- Diagnostic alternatif moins probable : +3
+- FC > 100 /min : +1,5
+- Immobilisation > 3 jours ou chirurgie < 4 semaines : +1,5
+- ATCD de TVP ou EP : +1,5
+- Hémoptysie : +1
+- Cancer actif : +1
+Interprétation : faible < 2 ; intermédiaire 2-6 ; forte > 6
+
+=======================================================
+IV. STRATÉGIE DIAGNOSTIQUE
+=======================================================
+
+1. Probabilité faible/intermédiaire → Dosage des D-Dimères
+- Si D-Dimères < seuil → EP exclue (VPN > 99 %)
+- Si D-Dimères élevés → Angioscanner thoracique
+
+2. Probabilité forte → Angioscanner thoracique d'emblée (sans attendre D-Dimères)
+
+3. Si contre-indication scanner (insuffisance rénale sévère, allergie au produit de contraste, grossesse) :
+- Scintigraphie pulmonaire V/Q
+- Échographie des membres inférieurs
+
+ECG :
+- Aspect S1Q3T3 (inconstant, évocateur mais non spécifique)
+- Tachycardie sinusale (fréquent)
+- Bloc de branche droit
+
+Biologie :
+- D-Dimères (ELISA, seuil 500 µg/L, ou ajusté à l'âge : age x 10 µg/L après 50 ans)
+- Troponine : marqueur de souffrance du VD (valeur pronostique)
+- BNP/NT-proBNP : valeur pronostique
+
+=======================================================
+V. ANGIOSCANNER PULMONAIRE — TECHNIQUE
+=======================================================
+
+INDICATION PRINCIPALE :
+Premier examen d'imagerie en urgence pour le diagnostic de l'EP en dehors des contre-indications.
+
+PRÉPARATION DU PATIENT :
+- Vérification de la créatinémie (risque de néphropathie aux produits de contraste iodés)
+- Interrogatoire : allergies connues, traitements en cours (Metformine à arrêter 48h)
+- Voie veineuse périphérique (VVP) de bon calibre : 18G ou 16G (gros calibre impératif)
+- VVP préférentielle : veine antécubitale droite (bras droit) pour éviter les artéfacts de flux
+
+PARAMÈTRES TECHNIQUES :
+- Collimation fine : 1 à 1,25 mm
+- Pitch élevé
+- kV : 100 à 120 kV selon le morphotype (réduction dose possible avec 100 kV)
+- mAs : modulé automatiquement (CARE Dose4D ou équivalent)
+
+INJECTION DU PRODUIT DE CONTRASTE :
+- Produit iodé basse osmolalité non ionique
+- Concentration : 350 à 370 mg I/mL
+- Volume : 80 à 100 mL
+- Débit : 4 à 5 mL/s (IMPÉRATIF pour opacification optimale)
+- Suivi bolus (bolus tracking) : ROI sur tronc pulmonaire, seuil 100-120 UH
+- Flush sérum physiologique : 30 à 40 mL au même débit
+
+FENÊTRE D'ACQUISITION :
+- De la base du cou à la base thoracique (ou dômes diaphragmatiques)
+- En inspiration profonde et bloquée
+- Toujours en cranio-caudal
+
+RECONSTRUCTION :
+- Coupes axiales 1 mm et 3 mm
+- Reconstructions MPR coronales et sagittales
+- MIP coronaux utiles pour visualiser l'arbre artériel
+
+=======================================================
+VI. SÉMIOLOGIE SCANNER DE L'EP
+=======================================================
+
+SIGNES DIRECTS (certitude diagnostique) :
+- Lacune endoluminale (thrombus) : image hypodense dans la lumière artérielle opacifiée
+- Occlusion complète : absence de rehaussement de l'artère (cut-off sign)
+- Le thrombus peut être central, paracentral ou périphérique
+
+LOCALISATION ET CLASSIFICATION :
+- EP centrale : tronc pulmonaire ou artères pulmonaires principales (droite/gauche)
+- EP lobaire : artères lobaires supérieures, moyennes ou inférieures
+- EP segmentaire : branches segmentaires
+- EP sous-segmentaire : branches sous-segmentaires (diagnostic parfois difficile)
+
+SIGNES INDIRECTS (évocateurs mais non spécifiques) :
+- Infarctus pulmonaire : opacité en coin base pleurale, apex vers le hile (signe de Hampton)
+- Épanchement pleural homolatéral
+- Dilatation des artères pulmonaires centrales
+- Signes de cœur pulmonaire aigu :
+* Rapport VD/VG > 1 (coupe 4 cavités)
+* Septum interventriculaire rectiligne ou bombant vers la gauche (D-sign)
+* Dilatation des veines caves et de la veine azygos
+
+CLASSIFICATION DE GRAVITÉ (données scanner) :
+- EP massive (à haut risque) : obstruction > 50 % + signes de dysfonction VD
+- EP submassive : obstruction partielle + signes de dysfonction VD
+- EP non massive : obstruction partielle, hémodynamique stable
+
+=======================================================
+VII. SCORE CT-PE SEVERITY INDEX
+=======================================================
+
+Permet d'évaluer la gravité sur les données scanner :
+- Thrombus dans l'artère pulmonaire principale : 5 pts
+- Rapport VD/VG > 1 : 4 pts
+- Septum rectiligne ou bombant : 4 pts
+- Chaque artère lobaire obstruée : 1 pt chacune
+Score > 10 : EP sévère, mortalité élevée
+
+=======================================================
+VIII. DIAGNOSTICS DIFFÉRENTIELS
+=======================================================
+
+- Pneumonie, pleurésie
+- Pneumothorax
+- Infarctus du myocarde, péricardite
+- Dissection aortique (urgence absolue, à ne pas confondre)
+- Anévrisme de l'aorte thoracique
+- Adénopathies médiastinales
+- Athérome artériel pulmonaire (fausse image de thrombus)
+
+=======================================================
+IX. TRAITEMENT
+=======================================================
+
+EP non massive :
+- Anticoagulation immédiate : HBPM ou héparine non fractionnée (HNF) IV
+- Puis relais anticoagulant oral (AVK ou NACO)
+- Durée minimum : 3 mois ; prolongée si cancer ou facteur de risque persistant
+
+EP massive (choc cardiogénique) :
+- Thrombolyse systémique (rtPA, Actilyse®) si pas de contre-indication
+- Ou embolectomie chirurgicale
+- Anticoagulation par HNF
+
+Filtre cave inférieur : indication rare (contre-indication formelle aux anticoagulants)
+
+=======================================================
+X. SUIVI ET COMPLICATIONS
+=======================================================
+
+- Hypertension pulmonaire thromboembolique chronique (HTAP-TEC) : 2-4 % des EP
+- Récidive thrombo-embolique
+- Syndrome post-phlébitique
+
+Scanner de contrôle : généralement à 3-6 mois si EP grave ou HTAP suspectée.
