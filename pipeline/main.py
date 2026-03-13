@@ -87,6 +87,14 @@ def parse_args() -> argparse.Namespace:
         help="Génère un PowerPoint 16:9 illustré dans outputs/pptx/.",
     )
     parser.add_argument(
+        "--push-images-canva",
+        action="store_true",
+        help=(
+            "Génère 3 images via Claude + DALL-E et les uploade directement dans Canva "
+            "(nécessite ANTHROPIC_API_KEY, OPENAI_API_KEY et CANVA_API_TOKEN)."
+        ),
+    )
+    parser.add_argument(
         "--generate-images",
         action="store_true",
         help="Génère des schémas médicaux via DALL-E 3 (nécessite OPENAI_API_KEY).",
@@ -229,6 +237,7 @@ def step_export(
     export_pptx: bool,
     generate_images: bool,
     canva_pro: bool,
+    push_images_canva: bool,
 ) -> Path:
     """Étape 6 — Export : sauvegarde Markdown + exports optionnels."""
     # Markdown (toujours)
@@ -238,9 +247,32 @@ def step_export(
     md_path.write_text(fiche_md, encoding="utf-8")
     print(f"  [6/6] Markdown sauvegardé : {md_path.relative_to(ROOT)}")
 
-    # Génération de schémas médicaux (DALL-E 3)
+    # Génération de schémas via Claude + DALL-E + upload direct Canva
     images: dict = {}
-    if generate_images or export_pptx or canva_pro:
+    if push_images_canva:
+        from pipeline.canva_image_pusher import push_images_to_canva
+        from pipeline.canva_exporter import _extract_sections as _extract
+        sections_for_images = _extract(fiche_md)
+        asset_ids = push_images_to_canva(
+            fiche_sections=sections_for_images,
+            theme=theme,
+            specialty=specialty,
+        )
+        if asset_ids:
+            print(
+                f"  [6/6] Images Canva uploadées : "
+                f"{', '.join(asset_ids.keys())} → asset IDs Canva prêts."
+            )
+        # Les images locales générées pendant le push sont aussi disponibles
+        from pipeline.image_generator import IMAGES_DIR as _IMG_DIR
+        img_dir = _IMG_DIR / specialty / theme
+        for name in ("anatomie", "protocole", "resume"):
+            p = img_dir / f"schema_{name}.png"
+            if p.exists():
+                images[name] = p
+
+    # Génération de schémas médicaux (DALL-E 3 seul, sans upload Canva)
+    elif generate_images or export_pptx or canva_pro:
         from pipeline.image_generator import generate_schemas
         images = generate_schemas(theme=theme, specialty=specialty)
 
@@ -272,6 +304,10 @@ def step_export(
         from pipeline.canva_connector import push_to_canva
         from pipeline.canva_exporter import _extract_sections
         sections = _extract_sections(fiche_md)
+        # Si --push-images-canva a déjà uploadé des assets, les injecter
+        if push_images_canva and 'asset_ids' in dir():
+            for name, aid in asset_ids.items():
+                images.setdefault(name, aid)
         result = push_to_canva(
             fiche_sections=sections,
             theme=theme,
@@ -309,6 +345,7 @@ def run_pipeline(
     export_pptx: bool = False,
     generate_images: bool = False,
     canva_pro: bool = False,
+    push_images_canva: bool = False,
 ) -> Path | None:
     """
     Exécute le pipeline complet pour une spécialité + thème donnés.
@@ -348,6 +385,7 @@ def run_pipeline(
             export_pptx=export_pptx,
             generate_images=generate_images,
             canva_pro=canva_pro,
+            push_images_canva=push_images_canva,
         )
 
         elapsed = time.time() - start
@@ -448,6 +486,7 @@ def main() -> None:
             export_pptx=args.export_pptx,
             generate_images=args.generate_images,
             canva_pro=args.canva_pro,
+            push_images_canva=args.push_images_canva,
         )
         if path:
             results.append(path)
