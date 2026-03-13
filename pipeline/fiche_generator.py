@@ -273,12 +273,39 @@ Réponds avec le JSON uniquement, sans aucun texte avant ou après.\
 """
 
 
+def _sanitize_control_chars(text: str) -> str:
+    """
+    Échappe les caractères de contrôle littéraux à l'intérieur des valeurs
+    de chaînes JSON (ex: sauts de ligne réels générés par le LLM).
+    """
+    _ESCAPES = {'\n': '\\n', '\r': '\\r', '\t': '\\t', '\b': '\\b', '\f': '\\f'}
+    result = []
+    in_string = False
+    escape_next = False
+    for char in text:
+        if escape_next:
+            result.append(char)
+            escape_next = False
+        elif char == '\\' and in_string:
+            result.append(char)
+            escape_next = True
+        elif char == '"':
+            in_string = not in_string
+            result.append(char)
+        elif in_string and ord(char) < 0x20:
+            result.append(_ESCAPES.get(char, ''))
+        else:
+            result.append(char)
+    return ''.join(result)
+
+
 def _parse_json_response(text: str) -> dict:
     """
     Parse la réponse JSON de Groq avec nettoyage des artefacts courants.
 
     Gère :
     - Blocs de code Markdown (```json ... ```)
+    - Caractères de contrôle littéraux dans les valeurs de chaînes
     - Espaces/retours à la ligne parasites
     - Réponse directement JSON
 
@@ -289,6 +316,9 @@ def _parse_json_response(text: str) -> dict:
     text = re.sub(r"^```(?:json)?\s*\n?", "", text.strip())
     text = re.sub(r"\n?```\s*$", "", text.strip())
     text = text.strip()
+
+    # Échapper les caractères de contrôle littéraux dans les strings JSON
+    text = _sanitize_control_chars(text)
 
     try:
         data = json.loads(text)
