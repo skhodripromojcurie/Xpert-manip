@@ -7,7 +7,7 @@
 #   pip install -r requirements.txt
 
 # --- API Gemini (génération IA des fiches) ---
-google-genai>=1.0.0         # SDK Python — client Google Gemini API (gratuit)
+groq>=0.12.0                # SDK Python — client Groq API (gratuit, Llama 3.3 70B)
 
 # --- Parseurs de documents ---
 pdfplumber>=0.10.0         # Extraction texte PDF (meilleure gestion des layouts)

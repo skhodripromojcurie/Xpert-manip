@@ -1,10 +1,10 @@
 """
 fiche_generator.py
 ==================
-Génération de fiches pédagogiques via l'API Google Gemini (gemini-2.0-flash).
+Génération de fiches pédagogiques via l'API Groq (llama-3.3-70b-versatile).
 
 Ce module est le cœur éditorial du pipeline. Il reçoit le texte fusionné
-des sources nettoyées et demande à Gemini de produire une fiche pédagogique
+des sources nettoyées et demande à Groq/Llama de produire une fiche pédagogique
 homogène, réécrite et structurée selon le template Xpermanip.
 
 Le modèle ne copie PAS les sources : il synthétise, restructure et réécrit.
@@ -20,10 +20,10 @@ Usage :
         source_files=["cours_A.pdf", "slides_B.pptx"],
     )
 
-Clé API :
-    Créer une clé gratuite sur https://aistudio.google.com/app/apikey
-    Puis : set GOOGLE_API_KEY=ta_cle   (Windows)
-           export GOOGLE_API_KEY=ta_cle (Linux/Mac)
+Clé API gratuite :
+    Créer un compte sur https://console.groq.com
+    Puis : set GROQ_API_KEY=ta_cle   (Windows)
+           export GROQ_API_KEY=ta_cle (Linux/Mac)
 """
 
 import json
@@ -32,8 +32,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from google import genai
-from google.genai import types
+from groq import Groq
 
 # ---------------------------------------------------------------------------
 # Prompt système : persona pédagogique MERM
@@ -127,10 +126,7 @@ def generate_fiche(
     verbose: bool = True,
 ) -> str:
     """
-    Génère une fiche pédagogique Markdown via Google Gemini (gemini-2.0-flash).
-
-    Le texte fusionné est envoyé à Gemini avec une demande de production
-    structurée en JSON. Le JSON est ensuite injecté dans le template Markdown.
+    Génère une fiche pédagogique Markdown via Groq (llama-3.3-70b-versatile).
 
     Args:
         merged_text: Texte nettoyé fusionné de toutes les sources du thème.
@@ -143,35 +139,42 @@ def generate_fiche(
         str: Fiche pédagogique complète au format Markdown.
 
     Raises:
-        ValueError: Clé API GOOGLE_API_KEY manquante ou réponse JSON malformée.
+        ValueError: Clé API GROQ_API_KEY manquante ou réponse JSON malformée.
     """
-    api_key = os.environ.get("GOOGLE_API_KEY")
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         raise ValueError(
-            "Clé API manquante. Définis la variable d'environnement GOOGLE_API_KEY.\n"
-            "Obtiens une clé gratuite sur : https://aistudio.google.com/app/apikey"
+            "Clé API manquante. Définis la variable d'environnement GROQ_API_KEY.\n"
+            "Obtiens une clé gratuite sur : https://console.groq.com"
         )
 
-    client = genai.Client(api_key=api_key)
+    client = Groq(api_key=api_key)
 
     prompt = _build_prompt(merged_text, theme, specialty)
 
     if verbose:
-        print(f"  [Gemini] Génération de la fiche '{theme}' en cours...")
+        print(f"  [Groq] Génération de la fiche '{theme}' en cours...")
 
-    response = client.models.generate_content(
-        model="gemini-1.5-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-        ),
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=8000,
+        temperature=0.3,
     )
-    text = response.text.strip()
+
+    text = completion.choices[0].message.content.strip()
 
     if verbose:
-        print(f"  [Gemini] Réponse reçue ({len(text)} caractères)")
+        usage = completion.usage
+        print(
+            f"  [Groq] Tokens : {usage.prompt_tokens} in / "
+            f"{usage.completion_tokens} out"
+        )
 
-    # Parser le JSON renvoyé par Gemini
+    # Parser le JSON renvoyé par Groq
     data = _parse_json_response(text)
 
     return FICHE_TEMPLATE.format(
@@ -195,7 +198,7 @@ def generate_fiche(
 # ---------------------------------------------------------------------------
 
 def _build_prompt(merged_text: str, theme: str, specialty: str) -> str:
-    """Construit le prompt utilisateur envoyé à Gemini."""
+    """Construit le prompt utilisateur envoyé à Groq."""
     # Tronquer si trop long (sécurité context window)
     max_chars = 120_000
     if len(merged_text) > max_chars:
@@ -232,7 +235,7 @@ Réponds avec le JSON uniquement, sans aucun texte avant ou après.\
 
 def _parse_json_response(text: str) -> dict:
     """
-    Parse la réponse JSON de Gemini avec nettoyage des artefacts courants.
+    Parse la réponse JSON de Groq avec nettoyage des artefacts courants.
 
     Gère :
     - Blocs de code Markdown (```json ... ```)
@@ -257,13 +260,13 @@ def _parse_json_response(text: str) -> dict:
                 data = json.loads(match.group())
             except json.JSONDecodeError:
                 raise ValueError(
-                    f"Impossible de parser la réponse JSON de Gemini.\n"
+                    f"Impossible de parser la réponse JSON de Groq.\n"
                     f"Erreur : {exc}\n"
                     f"Début de la réponse : {text[:300]}"
                 ) from exc
         else:
             raise ValueError(
-                f"Aucun JSON trouvé dans la réponse Gemini.\n"
+                f"Aucun JSON trouvé dans la réponse Groq.\n"
                 f"Début : {text[:300]}"
             ) from exc
 
@@ -275,7 +278,7 @@ def _parse_json_response(text: str) -> dict:
     missing = required - set(data.keys())
     if missing:
         raise ValueError(
-            f"Clés manquantes dans la réponse Gemini : {missing}"
+            f"Clés manquantes dans la réponse Groq : {missing}"
         )
 
     return data
