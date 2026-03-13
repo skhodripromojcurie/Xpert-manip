@@ -246,9 +246,20 @@ def step_export(
 
     # Export PowerPoint local (python-pptx)
     if export_pptx:
+        import os, subprocess, sys
         from pipeline.pptx_builder import build_pptx
         pptx_path = build_pptx(fiche_md, theme, specialty, images)
         print(f"  [6/6] PowerPoint sauvegardé : {pptx_path.relative_to(ROOT)}")
+        # Ouverture automatique du fichier
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(pptx_path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(pptx_path)])
+            else:
+                subprocess.Popen(["xdg-open", str(pptx_path)])
+        except Exception:
+            pass
 
     # Export Canva HTML/JSON (Bulk Create)
     if export_canva:
