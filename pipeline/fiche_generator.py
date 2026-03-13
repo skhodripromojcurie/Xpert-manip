@@ -1,10 +1,10 @@
 """
 fiche_generator.py
 ==================
-Génération de fiches pédagogiques via l'API Claude (claude-opus-4-6).
+Génération de fiches pédagogiques via l'API Google Gemini (gemini-2.0-flash).
 
 Ce module est le cœur éditorial du pipeline. Il reçoit le texte fusionné
-des sources nettoyées et demande à Claude de produire une fiche pédagogique
+des sources nettoyées et demande à Gemini de produire une fiche pédagogique
 homogène, réécrite et structurée selon le template Xpermanip.
 
 Le modèle ne copie PAS les sources : il synthétise, restructure et réécrit.
@@ -19,6 +19,11 @@ Usage :
         specialty="scanner",
         source_files=["cours_A.pdf", "slides_B.pptx"],
     )
+
+Clé API :
+    Créer une clé gratuite sur https://aistudio.google.com/app/apikey
+    Puis : set GOOGLE_API_KEY=ta_cle   (Windows)
+           export GOOGLE_API_KEY=ta_cle (Linux/Mac)
 """
 
 import json
@@ -27,7 +32,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-import anthropic
+import google.generativeai as genai
 
 # ---------------------------------------------------------------------------
 # Prompt système : persona pédagogique MERM
@@ -121,9 +126,9 @@ def generate_fiche(
     verbose: bool = True,
 ) -> str:
     """
-    Génère une fiche pédagogique Markdown via Claude (claude-opus-4-6).
+    Génère une fiche pédagogique Markdown via Google Gemini (gemini-2.0-flash).
 
-    Le texte fusionné est envoyé à Claude avec une demande de production
+    Le texte fusionné est envoyé à Gemini avec une demande de production
     structurée en JSON. Le JSON est ensuite injecté dans le template Markdown.
 
     Args:
@@ -131,45 +136,40 @@ def generate_fiche(
         theme: Nom du thème (ex: "embolie_pulmonaire").
         specialty: Nom de la spécialité (ex: "scanner").
         source_files: Liste des noms de fichiers sources (traçabilité).
-        verbose: Affiche les tokens utilisés si True.
+        verbose: Affiche les infos de génération si True.
 
     Returns:
         str: Fiche pédagogique complète au format Markdown.
 
     Raises:
-        anthropic.AuthenticationError: Clé API ANTHROPIC_API_KEY manquante/invalide.
-        ValueError: Réponse JSON de Claude malformée après 3 tentatives.
+        ValueError: Clé API GOOGLE_API_KEY manquante ou réponse JSON malformée.
     """
-    client = anthropic.Anthropic()  # lit ANTHROPIC_API_KEY depuis l'env
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "Clé API manquante. Définis la variable d'environnement GOOGLE_API_KEY.\n"
+            "Obtiens une clé gratuite sur : https://aistudio.google.com/app/apikey"
+        )
+
+    genai.configure(api_key=api_key)
+
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        system_instruction=SYSTEM_PROMPT,
+    )
 
     prompt = _build_prompt(merged_text, theme, specialty)
 
     if verbose:
-        print(f"  [Claude] Génération de la fiche '{theme}' en cours (streaming)...")
+        print(f"  [Gemini] Génération de la fiche '{theme}' en cours...")
 
-    # Streaming — protège contre les timeouts sur les longues réponses
-    with client.messages.stream(
-        model="claude-opus-4-6",
-        max_tokens=8000,
-        thinking={"type": "adaptive"},
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    ) as stream:
-        response = stream.get_final_message()
+    response = model.generate_content(prompt)
+    text = response.text.strip()
 
     if verbose:
-        usage = response.usage
-        print(
-            f"  [Claude] Tokens : {usage.input_tokens} in / "
-            f"{usage.output_tokens} out"
-        )
+        print(f"  [Gemini] Réponse reçue ({len(text)} caractères)")
 
-    # Extraire le bloc texte (hors blocs thinking)
-    text = next(
-        (b.text for b in response.content if b.type == "text"), ""
-    ).strip()
-
-    # Parser le JSON renvoyé par Claude
+    # Parser le JSON renvoyé par Gemini
     data = _parse_json_response(text)
 
     return FICHE_TEMPLATE.format(
@@ -193,7 +193,7 @@ def generate_fiche(
 # ---------------------------------------------------------------------------
 
 def _build_prompt(merged_text: str, theme: str, specialty: str) -> str:
-    """Construit le prompt utilisateur envoyé à Claude."""
+    """Construit le prompt utilisateur envoyé à Gemini."""
     # Tronquer si trop long (sécurité context window)
     max_chars = 120_000
     if len(merged_text) > max_chars:
@@ -230,7 +230,7 @@ Réponds avec le JSON uniquement, sans aucun texte avant ou après.\
 
 def _parse_json_response(text: str) -> dict:
     """
-    Parse la réponse JSON de Claude avec nettoyage des artefacts courants.
+    Parse la réponse JSON de Gemini avec nettoyage des artefacts courants.
 
     Gère :
     - Blocs de code Markdown (```json ... ```)
@@ -255,13 +255,13 @@ def _parse_json_response(text: str) -> dict:
                 data = json.loads(match.group())
             except json.JSONDecodeError:
                 raise ValueError(
-                    f"Impossible de parser la réponse JSON de Claude.\n"
+                    f"Impossible de parser la réponse JSON de Gemini.\n"
                     f"Erreur : {exc}\n"
                     f"Début de la réponse : {text[:300]}"
                 ) from exc
         else:
             raise ValueError(
-                f"Aucun JSON trouvé dans la réponse Claude.\n"
+                f"Aucun JSON trouvé dans la réponse Gemini.\n"
                 f"Début : {text[:300]}"
             ) from exc
 
@@ -273,7 +273,7 @@ def _parse_json_response(text: str) -> dict:
     missing = required - set(data.keys())
     if missing:
         raise ValueError(
-            f"Clés manquantes dans la réponse Claude : {missing}"
+            f"Clés manquantes dans la réponse Gemini : {missing}"
         )
 
     return data

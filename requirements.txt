@@ -6,8 +6,8 @@
 #   .venv\Scripts\activate           # Windows
 #   pip install -r requirements.txt
 
-# --- API Claude (génération IA des fiches) ---
-anthropic>=0.49.0          # SDK Python — client Claude API
+# --- API Gemini (génération IA des fiches) ---
+google-generativeai>=0.8.0  # SDK Python — client Google Gemini API (gratuit)
 
 # --- Parseurs de documents ---
 pdfplumber>=0.10.0         # Extraction texte PDF (meilleure gestion des layouts)
