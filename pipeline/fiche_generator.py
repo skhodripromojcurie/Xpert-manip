@@ -32,7 +32,8 @@ import re
 from datetime import date
 from pathlib import Path
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # ---------------------------------------------------------------------------
 # Prompt système : persona pédagogique MERM
@@ -151,19 +152,20 @@ def generate_fiche(
             "Obtiens une clé gratuite sur : https://aistudio.google.com/app/apikey"
         )
 
-    genai.configure(api_key=api_key)
-
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        system_instruction=SYSTEM_PROMPT,
-    )
+    client = genai.Client(api_key=api_key)
 
     prompt = _build_prompt(merged_text, theme, specialty)
 
     if verbose:
         print(f"  [Gemini] Génération de la fiche '{theme}' en cours...")
 
-    response = model.generate_content(prompt)
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+        ),
+    )
     text = response.text.strip()
 
     if verbose:
