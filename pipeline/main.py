@@ -74,12 +74,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--export-canva",
         action="store_true",
-        help="Génère aussi un export HTML/JSON Canva dans outputs/canva/.",
+        help="Génère un export HTML/JSON Canva dans outputs/canva/.",
     )
     parser.add_argument(
         "--export-notion",
         action="store_true",
         help="Publie la fiche dans Notion (nécessite NOTION_TOKEN et NOTION_DATABASE_ID).",
+    )
+    parser.add_argument(
+        "--export-pptx",
+        action="store_true",
+        help="Génère un PowerPoint 16:9 illustré dans outputs/pptx/.",
+    )
+    parser.add_argument(
+        "--generate-images",
+        action="store_true",
+        help="Génère des schémas médicaux via DALL-E 3 (nécessite OPENAI_API_KEY).",
+    )
+    parser.add_argument(
+        "--canva-pro",
+        action="store_true",
+        help=(
+            "Envoie la fiche dans Canva via Connect API Pro "
+            "(nécessite CANVA_API_TOKEN et CANVA_TEMPLATE_ID)."
+        ),
     )
     parser.add_argument(
         "--skip-parse",
@@ -208,22 +226,53 @@ def step_export(
     *,
     export_canva: bool,
     export_notion: bool,
+    export_pptx: bool,
+    generate_images: bool,
+    canva_pro: bool,
 ) -> Path:
     """Étape 6 — Export : sauvegarde Markdown + exports optionnels."""
-    # Markdown
+    # Markdown (toujours)
     md_dir = OUTPUT_DIR / specialty
     md_dir.mkdir(parents=True, exist_ok=True)
     md_path = md_dir / f"{theme}.md"
     md_path.write_text(fiche_md, encoding="utf-8")
     print(f"  [6/6] Markdown sauvegardé : {md_path.relative_to(ROOT)}")
 
-    # Export Canva (optionnel)
+    # Génération de schémas médicaux (DALL-E 3)
+    images: dict = {}
+    if generate_images or export_pptx or canva_pro:
+        from pipeline.image_generator import generate_schemas
+        images = generate_schemas(theme=theme, specialty=specialty)
+
+    # Export PowerPoint local (python-pptx)
+    if export_pptx:
+        from pipeline.pptx_builder import build_pptx
+        pptx_path = build_pptx(fiche_md, theme, specialty, images)
+        print(f"  [6/6] PowerPoint sauvegardé : {pptx_path.relative_to(ROOT)}")
+
+    # Export Canva HTML/JSON (Bulk Create)
     if export_canva:
         from pipeline.canva_exporter import export_to_canva
         canva_path = export_to_canva(fiche_md, theme, specialty)
-        print(f"  [6/6] Canva export : {canva_path.relative_to(ROOT)}")
+        print(f"  [6/6] Canva export HTML/JSON : {canva_path.relative_to(ROOT)}")
 
-    # Export Notion (optionnel)
+    # Canva Connect API Pro (autofill template + export PPTX)
+    if canva_pro:
+        from pipeline.canva_connector import push_to_canva
+        from pipeline.canva_exporter import _extract_sections
+        sections = _extract_sections(fiche_md)
+        result = push_to_canva(
+            fiche_sections=sections,
+            theme=theme,
+            specialty=specialty,
+            images=images,
+        )
+        if result:
+            print(f"  [6/6] Canva Pro design : {result['design_url']}")
+            if result.get("pptx_path"):
+                print(f"  [6/6] Canva PPTX : {result['pptx_path'].relative_to(ROOT)}")
+
+    # Export Notion
     if export_notion:
         from pipeline.notion_exporter import export_to_notion
         notion_url = export_to_notion(fiche_md, theme, specialty)
@@ -246,6 +295,9 @@ def run_pipeline(
     skip_parse: bool = False,
     export_canva: bool = False,
     export_notion: bool = False,
+    export_pptx: bool = False,
+    generate_images: bool = False,
+    canva_pro: bool = False,
 ) -> Path | None:
     """
     Exécute le pipeline complet pour une spécialité + thème donnés.
@@ -282,6 +334,9 @@ def run_pipeline(
             fiche_md, theme, specialty, source_names,
             export_canva=export_canva,
             export_notion=export_notion,
+            export_pptx=export_pptx,
+            generate_images=generate_images,
+            canva_pro=canva_pro,
         )
 
         elapsed = time.time() - start
@@ -379,6 +434,9 @@ def main() -> None:
             skip_parse=args.skip_parse,
             export_canva=args.export_canva,
             export_notion=args.export_notion,
+            export_pptx=args.export_pptx,
+            generate_images=args.generate_images,
+            canva_pro=args.canva_pro,
         )
         if path:
             results.append(path)

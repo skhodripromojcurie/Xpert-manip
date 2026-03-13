@@ -6,16 +6,22 @@
 #   .venv\Scripts\activate           # Windows
 #   pip install -r requirements.txt
 
-# --- API Gemini (génération IA des fiches) ---
-groq>=0.12.0                # SDK Python — client Groq API (gratuit, Llama 3.3 70B)
+# --- Génération IA des fiches (Groq / Llama 3.3 70B) ---
+groq>=0.12.0                # Client Groq API (gratuit)
+
+# --- Génération d'images médicales (optionnel — nécessite OPENAI_API_KEY) ---
+openai>=1.30.0              # DALL-E 3 pour les schémas médicaux illustrés
 
 # --- Parseurs de documents ---
-pdfplumber>=0.10.0         # Extraction texte PDF (meilleure gestion des layouts)
-python-docx>=1.1.0         # Lecture fichiers Word .docx
-python-pptx>=0.6.23        # Lecture fichiers PowerPoint .pptx
+pdfplumber>=0.10.0          # Extraction texte PDF
+python-docx>=1.1.0          # Lecture fichiers Word .docx
+python-pptx>=0.6.23         # Lecture ET génération fichiers PowerPoint .pptx
 
-# --- Export Notion (optionnel) ---
-notion-client>=2.2.1       # Client API Notion (requis seulement avec --export-notion)
+# --- HTTP (Canva Connect API, téléchargements) ---
+requests>=2.31.0            # Requêtes HTTP pour Canva API et téléchargements
+
+# --- Export Notion (optionnel — nécessite NOTION_TOKEN) ---
+notion-client>=2.2.1        # Client API Notion
 
 # --- Utilitaires standard (inclus dans Python 3.10+) ---
-# re, pathlib, json, argparse, os, datetime — stdlib, pas besoin d'installer
+# re, pathlib, json, argparse, os, datetime, base64, time — stdlib

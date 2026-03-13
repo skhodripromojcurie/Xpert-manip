@@ -39,18 +39,22 @@ from groq import Groq
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """\
-Tu es un expert en radiodiagnostic et en pédagogie médicale, spécialisé dans \
-la formation des MERM (Manipulateurs En Électroradiologie Médicale).
+Tu es un expert senior en radiodiagnostic et en pédagogie médicale, spécialisé \
+dans la formation des MERM (Manipulateurs En Électroradiologie Médicale).
 
-Ton rôle est de créer des fiches pédagogiques synthétiques, claires et \
-structurées à partir de supports de cours bruts fournis par l'utilisateur.
+Ton rôle est de créer des fiches pédagogiques COMPLÈTES, RICHES et STRUCTURÉES \
+à partir de supports de cours bruts fournis par l'utilisateur.
 
 Règles absolues :
-- NE copie PAS les phrases des sources : synthétise et réécris toujours.
+- NE copie PAS les phrases des sources : synthétise, développe et réécris toujours.
 - Adopte un ton pédagogique, professionnel, précis, orienté étudiant MERM.
 - Respecte le format JSON demandé à la lettre (clés exactes, valeurs Markdown).
-- Mets en valeur les points pratiques propres au rôle du manipulateur.
-- Sois synthétique mais complet : chaque section doit apporter de la valeur.\
+- Mets EN VALEUR les points pratiques propres au rôle du manipulateur.
+- Chaque section doit être DÉVELOPPÉE et APPROFONDIE : pas de résumé superficiel.
+- Les étudiants doivent pouvoir réviser UNIQUEMENT avec ta fiche, sans les sources originales.
+- Utilise des sous-titres (###), des tableaux Markdown, des exemples concrets.
+- Pour chaque erreur : explique la CAUSE et la CORRECTION.
+- Pour chaque notion : explique le POURQUOI, pas seulement le QUOI.\
 """
 
 # ---------------------------------------------------------------------------
@@ -161,7 +165,7 @@ def generate_fiche(
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        max_tokens=8000,
+        max_tokens=16000,
         temperature=0.3,
     )
 
@@ -212,21 +216,57 @@ Ces sources ont été extraites et nettoyées automatiquement.
 {merged_text}
 === FIN DES SOURCES ===
 
-À partir de ces sources, génère une fiche pédagogique complète pour des \
-étudiants MERM.
+À partir de ces sources, génère une fiche pédagogique COMPLÈTE et DÉTAILLÉE \
+pour des étudiants MERM. La fiche doit être suffisamment riche pour permettre \
+une révision complète sans recourir aux sources originales.
+
+EXIGENCES DE LONGUEUR ET DE CONTENU PAR SECTION :
+
+1. "titre" : Titre professionnel précis (ex: "IRM Pelvienne Féminine : Anatomie, Protocoles et Sémiologie")
+
+2. "objectif" : 3 à 4 phrases directes et mesurables couvrant les compétences \
+théoriques ET pratiques visées.
+
+3. "notions_cles" : 12 à 15 notions essentielles. Pour chaque notion : \
+une ligne de titre en gras (**Notion**) suivie d'1 à 2 phrases d'explication \
+du POURQUOI et du COMMENT. Utilise des sous-groupes (### Anatomie, \
+### Physique IRM, ### Protocole, etc.).
+
+4. "explication" : Développement structuré en MINIMUM 5 sous-sections (### Titre). \
+Chaque sous-section doit contenir 2 à 4 paragraphes avec exemples concrets, \
+valeurs numériques, paramètres techniques, éléments de sémiologie. \
+Utilise des tableaux Markdown quand pertinent (protocoles, séquences, \
+paramètres). Minimum 800 mots.
+
+5. "point_terrain" : 10 à 14 points pratiques CONCRETS du rôle MERM. \
+Format : **Point** suivi du détail (préparation patient, protocole injection, \
+positionnement, antennes, séquences à adapter, communications équipe, \
+vigilance effets secondaires, gestion artefacts). \
+Chaque point doit répondre à "que fait le MERM concrètement et POURQUOI".
+
+6. "erreurs" : 6 à 8 erreurs fréquentes. Pour chaque erreur : \
+❌ **Erreur** : description → ✅ **Correction** : solution précise. \
+Inclure les causes et conséquences cliniques éventuelles.
+
+7. "quiz" : 6 à 8 questions progressives (des plus simples aux plus complexes). \
+**Q1.** Question ?\\n> **R.** Réponse développée en 3 à 5 phrases avec justification. \
+Couvrir : anatomie, physique, protocole, sémiologie, cas cliniques.
+
+8. "resume" : 6 à 8 points de synthèse essentiels à retenir pour l'examen \
+et pour la pratique professionnelle.
 
 Réponds UNIQUEMENT avec un objet JSON valide contenant exactement ces 8 clés \
 (valeurs en Markdown, pas de JSON imbriqué) :
 
 {{
-  "titre": "Titre court et professionnel de la fiche (ex: Scanner thoracique : Embolie pulmonaire)",
-  "objectif": "L'objectif pédagogique en 1-2 phrases directes et mesurables",
-  "notions_cles": "- Notion 1\\n- Notion 2\\n... (5 à 8 notions essentielles)",
-  "explication": "Explication structurée avec sous-titres Markdown (### Physiopathologie, ### Sémiologie scanner, etc.)",
-  "point_terrain": "Points pratiques propres au rôle du MERM : positionnement, injection, protocole, vigilance",
-  "erreurs": "- Erreur fréquente 1\\n- Erreur fréquente 2\\n... (3 à 6 erreurs)",
-  "quiz": "**Q1.** Question ?\\n> **R.** Réponse courte.\\n\\n**Q2.** ...  (3 à 5 questions)",
-  "resume": "- Point clé 1\\n- Point clé 2\\n... (3 à 5 points de synthèse)"
+  "titre": "...",
+  "objectif": "...",
+  "notions_cles": "...",
+  "explication": "...",
+  "point_terrain": "...",
+  "erreurs": "...",
+  "quiz": "...",
+  "resume": "..."
 }}
 
 Réponds avec le JSON uniquement, sans aucun texte avant ou après.\
