@@ -1,20 +1,30 @@
 """
 pptx_builder.py
 ===============
-Génération automatique d'un PowerPoint professionnel 16:9 depuis une fiche
-pédagogique Markdown, avec intégration des schémas médicaux générés par IA.
+Génération automatique d'un PowerPoint 16:9 depuis une fiche pédagogique
+Markdown, avec un design calé sur le template Xpermanip fourni.
+
+Design system (extrait du template templates/template.pptx) :
+    - Couleur principale : Rouge #BF0000
+    - Accent orange      : #E67E22  (slide terrain)
+    - Accent bleu        : #2980B9  (slide quiz)
+    - Accent vert        : #27AE60  (corrections)
+    - Fond clair         : #F5F5F5 / blanc alterné
+    - Header             : bandeau pleine largeur, 1.10" de haut
+    - Footer             : barre rouge fine à y=7.18"
+    - Lignes zébrées     : badge numéroté carré + texte
+    - Cartes contenu     : fond #F5F5F5 + barre colorée gauche 0.20"
 
 Structure des slides :
-    Slide 1  — Page de titre (fond bleu marine, titre, spécialité, badge validation)
-    Slide 2  — Objectif pédagogique
-    Slide 3  — Notions clés  [+ schéma anatomie si disponible]
-    Slide 4+ — Explication structurée  (1 slide par sous-section H3)
-               [+ schéma protocole sur la dernière slide explication]
-    Slide N  — Point terrain MERM  (fond orange doux)
-    Slide N+1— Erreurs fréquentes  (icônes ❌ / ✅)
-    Slide N+2— Mini quiz
-    Slide N+3— Résumé final  [+ schéma résumé si disponible]
-    Slide fin — Slide de clôture Xpermanip
+    Slide 1  — Titre (split gauche rouge / droite blanc)
+    Slide 2  — Objectif pédagogique (grande carte)
+    Slide 3  — Notions clés (lignes zébrées, image droit si dispo)
+    Slide 4+ — Explication structurée (1 slide par ### sous-section)
+    Slide N  — Point terrain MERM (orange, 2 colonnes)
+    Slide N+1— Erreurs fréquentes (paires ❌/✅ en lignes zébrées)
+    Slide N+2— Mini quiz (lignes alternées bleu/blanc)
+    Slide N+3— Résumé final (lignes zébrées, image droit si dispo)
+    Slide fin— Clôture Xpermanip (fond rouge sombre)
 
 Usage :
     from pipeline.pptx_builder import build_pptx
@@ -25,7 +35,6 @@ Usage :
         specialty="irm",
         images={"anatomie": Path("..."), "protocole": Path("..."), "resume": Path("...")}
     )
-    # Sauvegardé dans outputs/pptx/<specialty>/<theme>.pptx
 """
 
 import re
@@ -35,29 +44,43 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Inches, Pt
 
-PPTX_DIR = Path(__file__).resolve().parent.parent / "outputs" / "pptx"
+PPTX_DIR     = Path(__file__).resolve().parent.parent / "outputs" / "pptx"
+TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "template.pptx"
 
 # ---------------------------------------------------------------------------
-# Palette de couleurs Xpermanip
+# Palette de couleurs (calée sur le template fourni)
 # ---------------------------------------------------------------------------
 
 C = {
-    "primary":    RGBColor(0x1A, 0x3A, 0x5C),   # Bleu marine
-    "accent":     RGBColor(0x2E, 0x86, 0xAB),   # Bleu clair
-    "highlight":  RGBColor(0xF1, 0x8F, 0x01),   # Orange terrain
-    "error_red":  RGBColor(0xC0, 0x39, 0x2B),   # Rouge erreur
-    "success":    RGBColor(0x27, 0xAE, 0x60),   # Vert correction
-    "bg_light":   RGBColor(0xF5, 0xF8, 0xFB),   # Fond gris bleuté
-    "white":      RGBColor(0xFF, 0xFF, 0xFF),
-    "text":       RGBColor(0x1C, 0x1C, 0x1E),
-    "text_light": RGBColor(0x6C, 0x75, 0x7D),
+    "primary":      RGBColor(0xBF, 0x00, 0x00),   # Rouge principal
+    "primary_dark": RGBColor(0xA5, 0x00, 0x00),   # Rouge sombre (closing)
+    "orange":       RGBColor(0xE6, 0x7E, 0x22),   # Orange (terrain MERM)
+    "blue":         RGBColor(0x29, 0x80, 0xB9),   # Bleu (quiz)
+    "green":        RGBColor(0x27, 0xAE, 0x60),   # Vert (corrections)
+    "navy":         RGBColor(0x2C, 0x3E, 0x50),   # Marine (badges neutres)
+    "bg_light":     RGBColor(0xF5, 0xF5, 0xF5),   # Fond gris clair
+    "bg_orange":    RGBColor(0xFF, 0xF3, 0xE0),   # Fond orange pâle
+    "white":        RGBColor(0xFF, 0xFF, 0xFF),
+    "text":         RGBColor(0x1A, 0x1A, 0x1A),
+    "text_muted":   RGBColor(0x55, 0x55, 0x55),
+    "light_pink":   RGBColor(0xFF, 0xCC, 0xCC),   # Texte léger sur rouge
+    "light_pink2":  RGBColor(0xFF, 0xD0, 0xD0),   # Texte réponse quiz
+    "light_orange": RGBColor(0xFF, 0xE0, 0xB2),   # Texte léger sur orange
 }
 
 # Taille 16:9
 SLIDE_W = Inches(13.33)
-SLIDE_H = Inches(7.5)
+SLIDE_H = Inches(7.50)
+
+# Zones fixes (en pouces)
+HEADER_H    = 1.10   # Hauteur du bandeau titre
+FOOTER_Y    = 7.18   # Début du pied de page
+FOOTER_H    = 0.32   # Hauteur du pied de page
+CONTENT_TOP = 1.20   # Début de la zone de contenu
+CONTENT_H   = FOOTER_Y - CONTENT_TOP   # ~5.98" disponibles
+ROW_H       = 0.56   # Hauteur d'une ligne zébrée
 
 
 # ---------------------------------------------------------------------------
@@ -71,10 +94,10 @@ def build_pptx(
     images: dict[str, Path] | None = None,
 ) -> Path:
     """
-    Génère le fichier PowerPoint complet.
+    Génère le fichier PowerPoint complet avec le design Xpermanip.
 
     Args:
-        fiche_md:  Contenu Markdown de la fiche.
+        fiche_md:  Contenu Markdown de la fiche pédagogique.
         theme:     Nom du thème (ex: "irm_feminin").
         specialty: Nom de la spécialité (ex: "irm").
         images:    Dict optionnel {"anatomie": Path, "protocole": Path, "resume": Path}.
@@ -89,18 +112,19 @@ def build_pptx(
     prs.slide_width  = SLIDE_W
     prs.slide_height = SLIDE_H
 
-    sections = _extract_sections(fiche_md)
+    sections    = _extract_sections(fiche_md)
     theme_label = theme.replace("_", " ").title()
+    footer_text = f"Xpermanip Content Engine  ·  {specialty.upper()} — {theme_label}"
 
-    # --- Slides ---
+    # Construction des slides
     _slide_title(prs, sections, theme_label, specialty)
-    _slide_objectif(prs, sections)
-    _slide_notions(prs, sections, images.get("anatomie"))
-    _slides_explication(prs, sections, images.get("protocole"))
-    _slide_terrain(prs, sections)
-    _slide_erreurs(prs, sections)
-    _slide_quiz(prs, sections)
-    _slide_resume(prs, sections, images.get("resume"))
+    _slide_objectif(prs, sections, footer_text)
+    _slide_notions(prs, sections, images.get("anatomie"), footer_text)
+    _slides_explication(prs, sections, images.get("protocole"), footer_text)
+    _slide_terrain(prs, sections, footer_text)
+    _slide_erreurs(prs, sections, footer_text)
+    _slide_quiz(prs, sections, footer_text)
+    _slide_resume(prs, sections, images.get("resume"), footer_text)
     _slide_closing(prs, specialty)
 
     # Sauvegarde
@@ -201,36 +225,52 @@ def _extract_subsections(text: str) -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
-# Helpers de mise en forme
+# Helpers de base
 # ---------------------------------------------------------------------------
 
 def _blank_slide(prs: Presentation) -> object:
-    """Ajoute un slide vierge (layout 6 = blank)."""
-    blank_layout = prs.slide_layouts[6]
-    return prs.slides.add_slide(blank_layout)
+    """Ajoute un slide vierge (layout blank)."""
+    return prs.slides.add_slide(prs.slide_layouts[6])
 
 
 def _fill_bg(slide, color: RGBColor) -> None:
     """Remplit le fond du slide avec une couleur unie."""
-    from pptx.oxml.ns import qn
-    from lxml import etree
     bg = slide.background
     fill = bg.fill
     fill.solid()
     fill.fore_color.rgb = color
 
 
+def _add_rect(
+    slide,
+    left: float, top: float, width: float, height: float,
+    fill_color: RGBColor,
+    no_line: bool = True,
+) -> object:
+    """Ajoute un rectangle coloré (coordonnées en pouces)."""
+    shape = slide.shapes.add_shape(
+        1,  # MSO_SHAPE_TYPE.RECTANGLE
+        Inches(left), Inches(top), Inches(width), Inches(height),
+    )
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = fill_color
+    if no_line:
+        shape.line.fill.background()
+    return shape
+
+
 def _add_textbox(
     slide,
     left: float, top: float, width: float, height: float,
     text: str,
-    font_size: int = 18,
+    font_size: int = 16,
     bold: bool = False,
+    italic: bool = False,
     color: RGBColor | None = None,
     align: PP_ALIGN = PP_ALIGN.LEFT,
     wrap: bool = True,
 ) -> object:
-    """Ajoute un textbox simple sur le slide."""
+    """Ajoute un textbox simple (coordonnées en pouces)."""
     txBox = slide.shapes.add_textbox(
         Inches(left), Inches(top), Inches(width), Inches(height)
     )
@@ -242,47 +282,106 @@ def _add_textbox(
     run.text = text
     run.font.size = Pt(font_size)
     run.font.bold = bold
+    run.font.italic = italic
     if color:
         run.font.color.rgb = color
     return txBox
 
 
-def _add_section_header(slide, title: str, color: RGBColor) -> None:
-    """Ajoute un bandeau titre de section en haut du slide."""
-    # Barre colorée gauche
-    bar = slide.shapes.add_shape(
-        1,  # MSO_SHAPE_TYPE.RECTANGLE
-        Inches(0), Inches(0),
-        Inches(13.33), Inches(1.1),
-    )
-    bar.fill.solid()
-    bar.fill.fore_color.rgb = color
-    bar.line.fill.background()
+# ---------------------------------------------------------------------------
+# Helpers de mise en page (design template)
+# ---------------------------------------------------------------------------
 
+def _add_header(slide, title: str, color: RGBColor | None = None) -> None:
+    """
+    Bandeau titre pleine largeur (style template) + texte Xpermanip top-right.
+    """
+    color = color or C["primary"]
+    # Bandeau coloré
+    _add_rect(slide, 0, 0, 13.33, HEADER_H, color)
     # Titre
-    txBox = slide.shapes.add_textbox(
-        Inches(0.4), Inches(0.1),
-        Inches(12.5), Inches(0.9),
+    _add_textbox(
+        slide, 0.50, 0.00, 10.50, HEADER_H,
+        title, font_size=28, bold=True, color=C["white"],
     )
-    tf = txBox.text_frame
-    tf.word_wrap = False
-    p = tf.paragraphs[0]
-    run = p.add_run()
-    run.text = title
-    run.font.size = Pt(26)
-    run.font.bold = True
-    run.font.color.rgb = C["white"]
+    # Logo texte top-right (position calée sur le template : 11.60", 0.22")
+    _add_textbox(
+        slide, 11.20, 0.13, 1.95, 0.50,
+        "Xpermanip", font_size=11, bold=True,
+        color=C["white"], align=PP_ALIGN.RIGHT,
+    )
+
+
+def _add_footer(slide, text_left: str = "") -> None:
+    """Barre de pied de page rouge fin (style template, y=7.18")."""
+    _add_rect(slide, 0, FOOTER_Y, 13.33, FOOTER_H, C["primary"])
+    if text_left:
+        _add_textbox(
+            slide, 0.40, FOOTER_Y + 0.01, 12.53, FOOTER_H - 0.02,
+            text_left, font_size=9, color=C["white"],
+        )
+
+
+def _add_striped_rows(
+    slide,
+    items: list[str],
+    left: float = 0.30,
+    top: float = CONTENT_TOP,
+    width: float = 12.73,
+    badge_color: RGBColor | None = None,
+) -> None:
+    """
+    Affiche une liste en lignes zébrées numérotées (style template slide 4).
+    Badge carré coloré à gauche + texte à droite.
+    Max 10 items.
+    """
+    badge_color = badge_color or C["primary"]
+    badge_w = 0.55
+
+    for i, item in enumerate(items[:10]):
+        y = top + i * ROW_H
+        fill = C["bg_light"] if i % 2 == 0 else C["white"]
+        # Ligne alternée
+        _add_rect(slide, left, y, width, ROW_H - 0.01, fill)
+        # Badge numéroté
+        _add_rect(slide, left, y, badge_w, ROW_H - 0.01, badge_color)
+        _add_textbox(
+            slide, left, y, badge_w, ROW_H - 0.01,
+            f"{i + 1:02d}", font_size=11, bold=True,
+            color=C["white"], align=PP_ALIGN.CENTER,
+        )
+        # Texte de la ligne (tronqué si trop long)
+        clean = re.sub(r"\*\*(.*?)\*\*", r"\1", item)
+        clean = re.sub(r"`(.*?)`", r"\1", clean)
+        _add_textbox(
+            slide, left + badge_w + 0.08, y + 0.06,
+            width - badge_w - 0.12, ROW_H - 0.12,
+            clean[:130], font_size=12, color=C["text"],
+        )
+
+
+def _add_content_card(
+    slide,
+    left: float, top: float, width: float, height: float,
+    bar_color: RGBColor | None = None,
+) -> None:
+    """
+    Fond de carte avec fine barre colorée à gauche (style template slides 6/7/8).
+    """
+    bar_color = bar_color or C["primary"]
+    _add_rect(slide, left, top, width, height, C["white"])
+    _add_rect(slide, left, top, 0.20, height, bar_color)
 
 
 def _add_bullet_list(
     slide,
     bullets: list[str],
     left: float, top: float, width: float, height: float,
-    font_size: int = 16,
+    font_size: int = 15,
     bullet_char: str = "▸",
     text_color: RGBColor | None = None,
 ) -> None:
-    """Ajoute une liste à puces formatée sur le slide."""
+    """Ajoute une liste à puces formatée."""
     if not bullets:
         return
     text_color = text_color or C["text"]
@@ -294,29 +393,27 @@ def _add_bullet_list(
     tf.word_wrap = True
 
     for i, bullet in enumerate(bullets):
-        # Nettoyer le markdown résiduel
-        bullet = re.sub(r"\*\*(.*?)\*\*", r"\1", bullet)
-        bullet = re.sub(r"`(.*?)`", r"\1", bullet)
+        clean = re.sub(r"\*\*(.*?)\*\*", r"\1", bullet)
+        clean = re.sub(r"`(.*?)`", r"\1", clean)
 
-        if i == 0:
-            p = tf.paragraphs[0]
-        else:
-            p = tf.add_paragraph()
-
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
         p.space_before = Pt(4)
         run = p.add_run()
-        run.text = f"{bullet_char}  {bullet}"
+        run.text = f"{bullet_char}  {clean}"
         run.font.size = Pt(font_size)
         run.font.color.rgb = text_color
 
 
-def _add_image_right(slide, img_path: Path, top_ratio: float = 0.15) -> None:
-    """Insère une image sur la moitié droite du slide."""
+def _add_image_fitted(
+    slide,
+    img_path: Path,
+    left: float, top: float, width: float, height: float,
+) -> None:
+    """Insère une image dans une zone donnée (coordonnées en pouces)."""
     try:
         slide.shapes.add_picture(
             str(img_path),
-            Inches(6.9), Inches(top_ratio * 7.5),
-            Inches(6.0), Inches(4.2),
+            Inches(left), Inches(top), Inches(width), Inches(height),
         )
     except Exception as exc:
         print(f"  [PPTX] ⚠ Image non insérée ({img_path.name}) : {exc}")
@@ -332,70 +429,98 @@ def _slide_title(
     theme_label: str,
     specialty: str,
 ) -> None:
-    """Slide 1 — Page de titre."""
+    """
+    Slide 1 — Page de titre.
+    Layout split : panneau gauche rouge (titre) / panneau droit blanc (infos).
+    (Calé sur le slide 1 du template fourni.)
+    """
     slide = _blank_slide(prs)
     _fill_bg(slide, C["primary"])
 
+    # Panneau droit blanc
+    _add_rect(slide, 6.50, 0.01, 6.83, 7.49, C["white"])
+
     titre = sections.get("titre", theme_label)
 
-    # Bande accent en bas
-    accent = slide.shapes.add_shape(
-        1, Inches(0), Inches(6.3), Inches(13.33), Inches(1.2)
-    )
-    accent.fill.solid()
-    accent.fill.fore_color.rgb = C["accent"]
-    accent.line.fill.background()
-
-    # Spécialité (petite étiquette)
+    # ── Contenu panneau gauche ──────────────────────────────────────────────
+    # Étiquette spécialité (rose clair)
     _add_textbox(
-        slide, 0.8, 1.6, 11.5, 0.5,
+        slide, 0.55, 1.40, 5.70, 0.60,
         f"{specialty.upper()}  ·  Fiche pédagogique MERM",
-        font_size=14, color=RGBColor(0xA8, 0xC8, 0xE8),
-        align=PP_ALIGN.LEFT,
+        font_size=16, color=C["light_pink"],
     )
-
-    # Titre principal
+    # Titre principal (grand, blanc)
     txBox = slide.shapes.add_textbox(
-        Inches(0.8), Inches(2.1), Inches(11.5), Inches(2.5)
+        Inches(0.55), Inches(2.10), Inches(5.70), Inches(2.50)
     )
     tf = txBox.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
-    p.alignment = PP_ALIGN.LEFT
     run = p.add_run()
     run.text = titre
-    run.font.size = Pt(36)
+    run.font.size = Pt(38)
     run.font.bold = True
     run.font.color.rgb = C["white"]
 
-    # Badge date + validation
+    # Date générée
     _add_textbox(
-        slide, 0.8, 6.35, 8.0, 0.6,
-        f"Généré le {date.today().strftime('%d/%m/%Y')}  ·  ⚠ À valider avant publication",
-        font_size=13, color=C["white"], align=PP_ALIGN.LEFT,
+        slide, 0.55, 4.80, 5.70, 0.55,
+        date.today().strftime("%d/%m/%Y"),
+        font_size=18, color=C["light_pink"],
+    )
+    # Signature bas-gauche
+    _add_textbox(
+        slide, 0.55, 6.78, 5.50, 0.38,
+        "VOTRE PARTENAIRE EN FORMATION CONTINUE",
+        font_size=9, color=RGBColor(0xFF, 0xAA, 0xAA),
     )
 
-    # Logo Xpermanip
+    # ── Contenu panneau droit ───────────────────────────────────────────────
+    # Label "Formation continue MERM" en rouge
     _add_textbox(
-        slide, 10.0, 6.35, 3.0, 0.6,
+        slide, 6.80, 1.50, 6.20, 0.45,
+        "Formation continue MERM",
+        font_size=15, bold=True, color=C["primary"],
+    )
+    # Lignes d'info alternées (style template slide 1)
+    row_items = [
+        f"📚  Spécialité : {specialty.upper()}",
+        f"🏷  Thème : {theme_label}",
+        "👨‍⚕️  Niveau : Étudiant MERM",
+        "⚠️  À valider avant publication",
+        f"📅  Généré le {date.today().strftime('%d/%m/%Y')}",
+    ]
+    for i, label in enumerate(row_items):
+        y = 2.10 + i * 0.68
+        fill = C["bg_light"] if i % 2 == 0 else C["white"]
+        _add_rect(slide, 6.80, y, 5.90, 0.66, fill)
+        _add_textbox(slide, 6.95, y + 0.05, 5.70, 0.56, label, font_size=13, color=C["text"])
+
+    # Branding top-right (sur le panneau blanc)
+    _add_textbox(
+        slide, 9.20, 0.22, 3.80, 0.60,
         "Xpermanip Engine",
-        font_size=13, bold=True, color=C["white"], align=PP_ALIGN.RIGHT,
+        font_size=13, bold=True, color=C["primary"], align=PP_ALIGN.RIGHT,
     )
 
 
-def _slide_objectif(prs: Presentation, sections: dict) -> None:
-    """Slide 2 — Objectif pédagogique."""
+def _slide_objectif(prs: Presentation, sections: dict, footer_text: str) -> None:
+    """Slide 2 — Objectif pédagogique (grande carte avec barre rouge)."""
     slide = _blank_slide(prs)
     _fill_bg(slide, C["bg_light"])
-    _add_section_header(slide, "🎯  Objectif pédagogique", C["primary"])
+    _add_header(slide, "🎯  Objectif pédagogique", C["primary"])
+    _add_footer(slide, footer_text)
 
     text = sections.get("objectif", "")
     text_clean = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text_clean = re.sub(r"`(.*?)`", r"\1", text_clean)
 
+    # Grande carte blanc avec barre rouge gauche
+    card_h = CONTENT_H - 0.20
+    _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, card_h, C["primary"])
     _add_textbox(
-        slide, 0.5, 1.3, 12.3, 5.5,
-        text_clean,
-        font_size=18, color=C["text"],
+        slide, 0.75, CONTENT_TOP + 0.20, 12.10, card_h - 0.40,
+        text_clean, font_size=17, color=C["text"],
     )
 
 
@@ -403,130 +528,153 @@ def _slide_notions(
     prs: Presentation,
     sections: dict,
     img_path: Path | None,
+    footer_text: str,
 ) -> None:
-    """Slide 3 — Notions clés (avec schéma anatomie si dispo)."""
+    """Slide 3 — Notions clés (lignes zébrées + schéma anatomie si dispo)."""
     slide = _blank_slide(prs)
-    _fill_bg(slide, C["bg_light"])
-    _add_section_header(slide, "🔑  Notions clés", C["primary"])
+    _fill_bg(slide, C["white"])
+    _add_header(slide, "🔑  Notions clés", C["primary"])
+    _add_footer(slide, footer_text)
 
-    bullets = _extract_bullets(sections.get("notions_cles", ""), max_items=12)
-    col_width = 6.0 if img_path and img_path.exists() else 12.5
+    bullets   = _extract_bullets(sections.get("notions_cles", ""), max_items=10)
+    has_image = img_path and img_path.exists()
+    row_width = 6.00 if has_image else 12.73
 
-    _add_bullet_list(slide, bullets, 0.5, 1.3, col_width, 5.8, font_size=15)
+    _add_striped_rows(slide, bullets, left=0.30, top=CONTENT_TOP, width=row_width)
 
-    if img_path and img_path.exists():
-        _add_image_right(slide, img_path, top_ratio=0.17)
+    if has_image:
+        _add_image_fitted(slide, img_path, 6.50, CONTENT_TOP, 6.50, CONTENT_H - 0.10)
 
 
 def _slides_explication(
     prs: Presentation,
     sections: dict,
     img_path: Path | None,
+    footer_text: str,
 ) -> None:
-    """Slides explication — 1 slide par sous-section H3."""
-    text = sections.get("explication", "")
+    """Slides explication structurée — 1 slide par sous-section H3."""
+    text        = sections.get("explication", "")
     subsections = _extract_subsections(text)
 
-    # Si pas de H3, faire une seule slide avec le contenu brut
     if not subsections:
         slide = _blank_slide(prs)
         _fill_bg(slide, C["bg_light"])
-        _add_section_header(slide, "📖  Explication structurée", C["accent"])
-        bullets = _extract_bullets(text, max_items=10)
-        _add_bullet_list(slide, bullets, 0.5, 1.3, 12.5, 5.8, font_size=15)
+        _add_header(slide, "📖  Explication structurée", C["primary"])
+        _add_footer(slide, footer_text)
+        bullets = _extract_bullets(text, max_items=8)
+        _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, CONTENT_H - 0.15, C["primary"])
+        _add_bullet_list(slide, bullets, 0.75, CONTENT_TOP + 0.15, 12.10, CONTENT_H - 0.35)
         return
 
     for i, (sub_title, sub_content) in enumerate(subsections):
         slide = _blank_slide(prs)
         _fill_bg(slide, C["bg_light"])
+        _add_header(slide, f"📖  {sub_title}", C["primary"])
+        _add_footer(slide, footer_text)
 
-        header_label = f"📖  {sub_title}"
-        _add_section_header(slide, header_label, C["accent"])
+        is_last   = (i == len(subsections) - 1)
+        has_image = img_path and img_path.exists() and is_last
+        col_w     = 6.00 if has_image else 12.53
 
-        # Bullets du sous-contenu
+        # Carte contenu avec barre rouge gauche
+        _add_content_card(slide, 0.40, CONTENT_TOP, col_w, CONTENT_H - 0.15, C["primary"])
+
         bullets = _extract_bullets(sub_content, max_items=8)
-        if not bullets:
-            # Texte libre (paragraphes)
+        if bullets:
+            _add_bullet_list(
+                slide, bullets,
+                0.75, CONTENT_TOP + 0.15, col_w - 0.40, CONTENT_H - 0.35,
+                font_size=15,
+            )
+        else:
             text_clean = re.sub(r"\*\*(.*?)\*\*", r"\1", sub_content)
             text_clean = re.sub(r"^#+\s+", "", text_clean, flags=re.MULTILINE)
-            col_w = 6.0 if (img_path and img_path.exists() and i == len(subsections) - 1) else 12.5
-            _add_textbox(slide, 0.5, 1.3, col_w, 5.8, text_clean[:800], font_size=15, color=C["text"])
-        else:
-            col_w = 6.0 if (img_path and img_path.exists() and i == len(subsections) - 1) else 12.5
-            _add_bullet_list(slide, bullets, 0.5, 1.3, col_w, 5.8, font_size=15)
+            _add_textbox(
+                slide, 0.75, CONTENT_TOP + 0.15, col_w - 0.40, CONTENT_H - 0.35,
+                text_clean[:900], font_size=14, color=C["text"],
+            )
 
-        # Schéma protocole sur la dernière slide d'explication
-        if img_path and img_path.exists() and i == len(subsections) - 1:
-            _add_image_right(slide, img_path, top_ratio=0.17)
+        if has_image:
+            _add_image_fitted(slide, img_path, 6.55, CONTENT_TOP, 6.45, CONTENT_H - 0.15)
 
 
-def _slide_terrain(prs: Presentation, sections: dict) -> None:
-    """Slide Point terrain MERM — fond orange doux."""
+def _slide_terrain(prs: Presentation, sections: dict, footer_text: str) -> None:
+    """Slide Point terrain MERM (orange, 2 colonnes si ≥ 7 items)."""
     slide = _blank_slide(prs)
-
-    # Fond blanc avec barre orange
-    _fill_bg(slide, C["white"])
-    barre = slide.shapes.add_shape(
-        1, Inches(0), Inches(0), Inches(0.18), Inches(7.5)
-    )
-    barre.fill.solid()
-    barre.fill.fore_color.rgb = C["highlight"]
-    barre.line.fill.background()
-
-    _add_section_header(slide, "🏥  Point terrain manipulateur", C["highlight"])
+    _fill_bg(slide, C["bg_orange"])
+    _add_header(slide, "🏥  Point terrain manipulateur", C["orange"])
+    _add_footer(slide, footer_text)
 
     bullets = _extract_bullets(sections.get("point_terrain", ""), max_items=12)
-    _add_bullet_list(slide, bullets, 0.5, 1.3, 12.5, 5.8, font_size=15, bullet_char="→")
+
+    if len(bullets) > 6:
+        mid = len(bullets) // 2
+        left_bullets  = bullets[:mid]
+        right_bullets = bullets[mid:]
+
+        # Colonne gauche
+        _add_content_card(slide, 0.30, CONTENT_TOP, 6.20, CONTENT_H - 0.10, C["orange"])
+        _add_bullet_list(
+            slide, left_bullets,
+            0.65, CONTENT_TOP + 0.15, 5.75, CONTENT_H - 0.35,
+            font_size=14, bullet_char="→", text_color=C["text"],
+        )
+        # Colonne droite
+        _add_content_card(slide, 6.80, CONTENT_TOP, 6.20, CONTENT_H - 0.10, C["orange"])
+        _add_bullet_list(
+            slide, right_bullets,
+            7.15, CONTENT_TOP + 0.15, 5.75, CONTENT_H - 0.35,
+            font_size=14, bullet_char="→", text_color=C["text"],
+        )
+    else:
+        _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, CONTENT_H - 0.10, C["orange"])
+        _add_bullet_list(
+            slide, bullets,
+            0.75, CONTENT_TOP + 0.15, 12.10, CONTENT_H - 0.35,
+            font_size=15, bullet_char="→", text_color=C["text"],
+        )
 
 
-def _slide_erreurs(prs: Presentation, sections: dict) -> None:
-    """Slide Erreurs fréquentes."""
+def _slide_erreurs(prs: Presentation, sections: dict, footer_text: str) -> None:
+    """Slide Erreurs fréquentes (paires ❌/✅ en lignes zébrées)."""
     slide = _blank_slide(prs)
     _fill_bg(slide, C["bg_light"])
-    _add_section_header(slide, "⚠️  Erreurs fréquentes", C["error_red"])
+    _add_header(slide, "⚠️  Erreurs fréquentes", C["primary"])
+    _add_footer(slide, footer_text)
 
-    text = sections.get("erreurs", "")
-
-    # Parser les paires ❌ / ✅ si présentes, sinon bullets normaux
+    text         = sections.get("erreurs", "")
     error_blocks = _parse_error_blocks(text)
 
     if error_blocks:
-        txBox = slide.shapes.add_textbox(
-            Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.8)
-        )
-        tf = txBox.text_frame
-        tf.word_wrap = True
-        first = True
-
-        for err, fix in error_blocks[:6]:
-            if first:
-                p = tf.paragraphs[0]
-                first = False
-            else:
-                p = tf.add_paragraph()
-                p.space_before = Pt(6)
-
-            r = p.add_run()
-            r.text = f"❌  {err}"
-            r.font.size = Pt(15)
-            r.font.color.rgb = C["error_red"]
-
+        card_h = 0.88
+        for i, (err, fix) in enumerate(error_blocks[:6]):
+            y    = CONTENT_TOP + i * (card_h + 0.05)
+            fill = C["bg_light"] if i % 2 == 0 else C["white"]
+            _add_rect(slide, 0.30, y, 12.73, card_h, fill)
+            _add_rect(slide, 0.30, y, 0.20, card_h, C["primary"])
+            # Ligne erreur
+            _add_textbox(
+                slide, 0.60, y + 0.08, 12.00, 0.38,
+                f"❌  {err[:120]}", font_size=13, bold=True, color=C["primary"],
+            )
             if fix:
-                p2 = tf.add_paragraph()
-                p2.space_before = Pt(2)
-                r2 = p2.add_run()
-                r2.text = f"   ✅  {fix}"
-                r2.font.size = Pt(14)
-                r2.font.color.rgb = C["success"]
+                _add_textbox(
+                    slide, 0.60, y + 0.46, 12.00, card_h - 0.52,
+                    f"✅  {fix[:150]}", font_size=12, color=C["green"],
+                )
     else:
         bullets = _extract_bullets(text, max_items=8)
-        _add_bullet_list(slide, bullets, 0.5, 1.3, 12.5, 5.8, font_size=15,
-                         text_color=C["error_red"])
+        _add_content_card(slide, 0.40, CONTENT_TOP, 12.53, CONTENT_H - 0.10, C["primary"])
+        _add_bullet_list(
+            slide, bullets,
+            0.75, CONTENT_TOP + 0.15, 12.10, CONTENT_H - 0.35,
+            font_size=15, text_color=C["primary"],
+        )
 
 
-def _slide_quiz(prs: Presentation, sections: dict) -> None:
-    """Slide Mini quiz — 2 slides si plus de 4 questions."""
-    text = sections.get("quiz", "")
+def _slide_quiz(prs: Presentation, sections: dict, footer_text: str) -> None:
+    """Slides Mini quiz (lignes alternées bleues, 2 slides si > 4 questions)."""
+    text     = sections.get("quiz", "")
     qa_pairs = _parse_quiz(text)
 
     chunks = [qa_pairs[:4], qa_pairs[4:8]] if len(qa_pairs) > 4 else [qa_pairs]
@@ -534,75 +682,84 @@ def _slide_quiz(prs: Presentation, sections: dict) -> None:
     for chunk_idx, chunk in enumerate(chunks):
         if not chunk:
             continue
+
         slide = _blank_slide(prs)
-        _fill_bg(slide, RGBColor(0xF0, 0xF7, 0xFF))
+        _fill_bg(slide, C["white"])
         title = "❓  Mini quiz" if chunk_idx == 0 else "❓  Mini quiz (suite)"
-        _add_section_header(slide, title, C["accent"])
+        _add_header(slide, title, C["blue"])
+        _add_footer(slide, footer_text)
 
-        txBox = slide.shapes.add_textbox(
-            Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.8)
-        )
-        tf = txBox.text_frame
-        tf.word_wrap = True
-        first = True
+        # Hauteur de bloc adaptative
+        block_h = min((CONTENT_H - 0.10) / max(len(chunk), 1) - 0.05, 1.35)
 
-        for q_num, (question, reponse) in enumerate(chunk, start=1 + chunk_idx * 4):
-            if first:
-                p = tf.paragraphs[0]
-                first = False
-            else:
-                p = tf.add_paragraph()
-                p.space_before = Pt(8)
+        for j, (question, reponse) in enumerate(chunk):
+            num  = j + 1 + chunk_idx * 4
+            y    = CONTENT_TOP + j * (block_h + 0.05)
+            fill = C["bg_light"] if j % 2 == 0 else C["white"]
 
-            r = p.add_run()
-            r.text = f"Q{q_num}. {question}"
-            r.font.size = Pt(15)
-            r.font.bold = True
-            r.font.color.rgb = C["primary"]
-
+            # Ligne de fond
+            _add_rect(slide, 0.30, y, 12.73, block_h, fill)
+            # Badge bleu (numéro de question)
+            _add_rect(slide, 0.30, y, 0.55, block_h, C["blue"])
+            _add_textbox(
+                slide, 0.30, y, 0.55, block_h,
+                f"Q{num}", font_size=12, bold=True,
+                color=C["white"], align=PP_ALIGN.CENTER,
+            )
+            # Question
+            _add_textbox(
+                slide, 0.95, y + 0.06, 12.00, 0.42,
+                question[:120], font_size=13, bold=True, color=C["text"],
+            )
+            # Réponse
             if reponse:
-                p2 = tf.add_paragraph()
-                p2.space_before = Pt(2)
-                r2 = p2.add_run()
-                r2.text = f"    ▸ {reponse[:200]}"
-                r2.font.size = Pt(13)
-                r2.font.color.rgb = C["text_light"]
+                _add_textbox(
+                    slide, 0.95, y + 0.48, 12.00, block_h - 0.52,
+                    f"▸ {reponse[:200]}", font_size=12, color=C["text_muted"],
+                )
 
 
 def _slide_resume(
     prs: Presentation,
     sections: dict,
     img_path: Path | None,
+    footer_text: str,
 ) -> None:
-    """Slide Résumé final."""
+    """Slide Résumé final (lignes zébrées + schéma résumé si dispo)."""
     slide = _blank_slide(prs)
-    _fill_bg(slide, C["bg_light"])
-    _add_section_header(slide, "📝  Résumé final", C["primary"])
+    _fill_bg(slide, C["white"])
+    _add_header(slide, "📝  Résumé final", C["primary"])
+    _add_footer(slide, footer_text)
 
-    bullets = _extract_bullets(sections.get("resume", ""), max_items=8)
-    col_width = 6.0 if (img_path and img_path.exists()) else 12.5
+    bullets   = _extract_bullets(sections.get("resume", ""), max_items=8)
+    has_image = img_path and img_path.exists()
+    row_width = 6.00 if has_image else 12.73
 
-    _add_bullet_list(slide, bullets, 0.5, 1.3, col_width, 5.8, font_size=16,
-                     text_color=C["primary"])
+    _add_striped_rows(slide, bullets, left=0.30, top=CONTENT_TOP, width=row_width, badge_color=C["navy"])
 
-    if img_path and img_path.exists():
-        _add_image_right(slide, img_path, top_ratio=0.17)
+    if has_image:
+        _add_image_fitted(slide, img_path, 6.50, CONTENT_TOP, 6.50, CONTENT_H - 0.10)
 
 
 def _slide_closing(prs: Presentation, specialty: str) -> None:
-    """Slide de clôture."""
+    """Slide de clôture (fond rouge sombre, texte blanc centré)."""
     slide = _blank_slide(prs)
-    _fill_bg(slide, C["primary"])
+    _fill_bg(slide, C["primary_dark"])
 
     _add_textbox(
-        slide, 0, 2.5, 13.33, 1.5,
+        slide, 0, 2.80, 13.33, 1.20,
         "Xpermanip Content Engine",
-        font_size=32, bold=True, color=C["white"], align=PP_ALIGN.CENTER,
+        font_size=36, bold=True, color=C["white"], align=PP_ALIGN.CENTER,
     )
     _add_textbox(
-        slide, 0, 3.9, 13.33, 0.8,
+        slide, 0, 4.10, 13.33, 0.60,
         f"{specialty.upper()}  ·  ⚠ Fiche à valider avant publication",
-        font_size=16, color=RGBColor(0xA8, 0xC8, 0xE8), align=PP_ALIGN.CENTER,
+        font_size=17, color=C["light_pink"], align=PP_ALIGN.CENTER,
+    )
+    _add_textbox(
+        slide, 0, 6.78, 13.33, 0.38,
+        "Formation continue MERM — Xpermanip",
+        font_size=10, color=RGBColor(0xFF, 0xAA, 0xAA), align=PP_ALIGN.CENTER,
     )
 
 
@@ -612,7 +769,7 @@ def _slide_closing(prs: Presentation, specialty: str) -> None:
 
 def _parse_error_blocks(text: str) -> list[tuple[str, str]]:
     """
-    Tente de parser les blocs ❌ Erreur / ✅ Correction.
+    Parse les blocs ❌ Erreur / ✅ Correction.
     Retourne [(erreur, correction), ...]
     """
     blocks = []
@@ -621,7 +778,7 @@ def _parse_error_blocks(text: str) -> list[tuple[str, str]]:
     current_fix = ""
 
     for line in lines:
-        stripped = line.strip()
+        stripped       = line.strip()
         stripped_clean = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
 
         if "❌" in stripped_clean or stripped_clean.lower().startswith("erreur"):
@@ -652,8 +809,8 @@ def _parse_quiz(text: str) -> list[tuple[str, str]]:
 
     for line in lines:
         stripped = line.strip()
-        clean = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
-        clean = re.sub(r"^>+\s*", "", clean)
+        clean    = re.sub(r"\*\*(.*?)\*\*", r"\1", stripped)
+        clean    = re.sub(r"^>+\s*", "", clean)
 
         q_match = re.match(r"^Q(\d+)[.)]\s*(.+)", clean, re.IGNORECASE)
         r_match = re.match(r"^R[.)]\s*(.+)|^Rép[.)]\s*(.+)", clean, re.IGNORECASE)
