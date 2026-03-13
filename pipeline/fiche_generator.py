@@ -160,7 +160,7 @@ def generate_fiche(
         print(f"  [Gemini] Génération de la fiche '{theme}' en cours...")
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-1.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
