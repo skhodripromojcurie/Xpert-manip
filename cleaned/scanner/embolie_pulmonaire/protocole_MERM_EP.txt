@@ -1,0 +1,161 @@
+PROTOCOLE MANIPULATEUR — ANGIOSCANNER PULMONAIRE EP
+Service de Radiologie — Urgences
+=======================================================
+
+RÔLE DU MANIPULATEUR EN RADIOLOGIE MÉDICALE (MERM)
+---
+
+Ce protocole décrit les actions spécifiques du MERM pour la réalisation
+d'un angioscanner thoracique dans le cadre d'une suspicion d'EP.
+
+=======================================================
+I. ACCUEIL ET VÉRIFICATION
+=======================================================
+
+1. Vérifier l'identité du patient (bracelet + questionnaire)
+2. Lire le bon d'examen : indication, urgence, traitement en cours
+3. Vérifier la créatinémie récente (< 3 mois ou < 7 jours si terrain à risque)
+→ Clairance < 30 mL/min : contacter le radiologue AVANT l'examen
+4. Rechercher contre-indications au produit de contraste iodé :
+- Allergie connue aux iodés → protocole prémédication ou alternative
+- Metformine (Glucophage) : arrêt 48h si injection ; vérifier avec radiologue
+- Myélome, Waldenström : risque de précipitation intrarénale
+5. Questionnaire grossesse (femme en âge de procréer) → adaptation protocole
+
+=======================================================
+II. POSE DE LA VOIE VEINEUSE
+=======================================================
+
+IMPÉRATIF : VVP de gros calibre
+- Minimum 18G (rose), idéalement 16G (gris) pour débit 4-5 mL/s
+- Localisation OBLIGATOIRE : veine antécubitale (pli du coude), bras DROIT
+Raison : évite l'opacification de la veine sous-clavière gauche qui crée
+des artéfacts de flux masquant les artères pulmonaires gauches
+- Vérification du bon reflux et de la perméabilité avant connexion au PSI
+- Test injection NaCl à débit élevé avant le produit de contraste
+
+Erreurs fréquentes à éviter :
+× Ne pas poser la VVP sur le dos de la main (débit insuffisant, douleur)
+× Ne pas utiliser une VVP de la main gauche ou bras gauche (artéfacts)
+× Ne pas utiliser une VVP < 20G
+
+=======================================================
+III. INSTALLATION DU PATIENT
+=======================================================
+
+- Position : décubitus dorsal, bras le long du corps ou en croix au-dessus de la tête
+(préférer bras au-dessus de la tête si possible : réduit les artéfacts osseux)
+- Tête en premier dans le statif
+- Ôter bijoux, soutien-gorge avec armatures métalliques
+- Expliquer la consigne respiratoire :
+"Je vais vous demander de prendre une grande inspiration et de bloquer votre respiration.
+Je vous dirai quand souffler. C'est très important pour ne pas avoir d'image floue."
+- Test respiratoire AVANT l'acquisition
+- Connecter le PSI à la VVP
+
+=======================================================
+IV. PROTOCOLE D'INJECTION — PARAMÈTRES TYPIQUES
+=======================================================
+
+Produit de contraste : Ioméron 350 ou Optiray 350
+Volume : 80-100 mL (adapter au poids si protocole dose-tracking)
+Débit : 4,5 mL/s
+Flush NaCl 0,9 % : 30-40 mL au même débit
+
+Technique bolus tracking :
+- ROI placé sur le tronc de l'artère pulmonaire (pas sur l'aorte)
+- Seuil de déclenchement : 100-120 UH
+- Délai avant acquisition : 5 s après le seuil
+
+Surveillance pendant l'injection :
+- Surveiller le patient et la zone de ponction
+- Repérer les signes d'extravasation (bosse, douleur, patient qui bouge)
+- Surveiller les écrans (courbe de densité bolus tracking)
+
+=======================================================
+V. PARAMÈTRES D'ACQUISITION
+=======================================================
+
+Étendue : base du cou → dômes diaphragmatiques
+Direction : cranio-caudale (IMPÉRATIF : sens de l'injection)
+Raison : l'acquisition dans le sens cranio-caudal est synchronisée avec
+l'arrivée du bolus et évite les artéfacts de sous-opacification.
+
+kV : 100 kV (morphotype standard), 120 kV (IMC > 30)
+Collimation : 0,625 mm ou 1 mm (selon constructeur)
+Pitch : ≥ 1 (rapide)
+Protection glandulaire : cache mammaire si disponible
+
+Consigne respiratoire lors de l'acquisition :
+- Lancer la consigne sonore automatique ET la répéter à voix haute
+si le patient paraît anxieux ou peu coopérant
+
+=======================================================
+VI. RECONSTRUCTIONS ET TRANSMISSION
+=======================================================
+
+Séries à reconstruire :
+1. Axiale 1 mm fenêtre médiastin (W350 L35)
+2. Axiale 3 mm fenêtre médiastin
+3. Axiale 1 mm fenêtre parenchyme (W1500 L-600)
+4. MPR coronale 3 mm
+5. MPR sagittale 3 mm
+6. MIP coronal 10 mm (optionnel selon protocole)
+
+Transfert PACS :
+- Vérifier l'identité AVANT l'envoi
+- Alerter immédiatement le radiologue de garde en cas d'EP massive visible
+ou de signe d'instabilité hémodynamique sur les images
+
+=======================================================
+VII. SURVEILLANCE POST-EXAMEN
+=======================================================
+
+- Garder la VVP en place jusqu'à validation des images par le radiologue
+- Hydratation per os ou IV si protocole néphroprotection
+- Si extravasation : protocole de prise en charge locale, fiche d'incident
+- Traçabilité : noter dose DLP, volume PC, débit, heure dans le dossier
+
+=======================================================
+VIII. CAS PARTICULIERS
+=======================================================
+
+Patient très agité / dyspnéique sévère :
+- Prévenir le médecin urgentiste d'être présent
+- Acquisition ultra-rapide envisagée (pitch maximal, FOV réduit)
+- Comprimer la durée d'apnée au maximum (acquisition < 6s possible)
+
+Suspicion de dissection aortique associée :
+- Protocole combiné possible : temps artériel aortique + temps pulmonaire
+- Discuter avec le radiologue avant de lancer
+
+Grossesse :
+- Toujours possible si indication vitale (EP à forte probabilité clinique)
+- Protection utérine par tablier plombé
+- Informer et rassurer la patiente : dose foetale estimée < 0.5 mGy pour un scan thoracique
+- Alternative : scintigraphie V/Q (dose foetale plus faible)
+
+Insuffisance rénale :
+- Clairance 30-60 mL/min : hydratation IV préventive (NaCl 0.9%, 1 mL/kg/h, 6-12h avant)
+- Clairance < 30 mL/min : contrôle radiologue et néphrologue impératif
+- Arrêt Metformine 48h dans tous les cas
+
+=======================================================
+IX. QUALITÉ DE L'EXAMEN — CRITÈRES D'ÉVALUATION
+=======================================================
+
+Examen de qualité suffisante si :
+- Opacification artères pulmonaires centrales > 200 UH
+- Pas d'artéfact cinétique (flou)
+- Pas de sous-opacification des artères gauches (bonne VVP)
+- Couverture complète de l'arbre artériel pulmonaire
+
+Examen non interprétable si :
+- Opacification < 150 UH (bolus raté, débit insuffisant)
+- Artéfact de mouvement majeur
+- Sous-opacification d'un territoire entier
+
+En cas d'examen non interprétable :
+- Informer immédiatement le radiologue
+- Ne pas refaire sans validation médicale
+- Documenter la cause dans le compte rendu technique
