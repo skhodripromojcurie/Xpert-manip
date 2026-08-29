@@ -6,8 +6,19 @@ clinique.
 
 ## Contenu
 
-- `docs/index.html` — le référentiel, 42 fiches. Fichier autonome : il fonctionne
-  sans serveur, hors connexion, et s'ouvre directement depuis un téléphone.
+- `donnees/protocoles.json` — les 42 fiches, source unique de vérité.
+  Voir `donnees/schema.md` pour le contrat des champs.
+- `docs/index.html` — la page livrée, **générée** depuis ce JSON. Fichier
+  autonome : elle fonctionne sans serveur, hors connexion, et s'ouvre
+  directement depuis un téléphone.
+- `outils/build_site.py` — régénère la page. Le référentiel ne se modifie que
+  par le JSON, jamais dans la page.
+
+```
+python3 outils/build_site.py              # régénérer docs/index.html
+python3 outils/build_site.py --verifier   # docs/ est-il en phase avec donnees/ ?
+python3 outils/verifier.py                # le contenu a-t-il dévié de l'origine ?
+```
 
 ## Périmètre de ce dépôt
 
@@ -28,7 +39,5 @@ vient du jugement et de la décision reste dans le dépôt privé.
 ## État
 
 - Diffusion en attente : GitHub Pages n'est pas activé.
-- Structure cible : `donnees/protocoles.json` comme source unique de vérité,
-  `docs/index.html` régénéré depuis ce JSON par `outils/build_site.py`.
-- Deux fiches à ajouter au référentiel (pouce ; articulation sterno-claviculaire),
-  ce qui portera le total à 44.
+- Deux fiches restent à rédiger (pouce ; articulation sterno-claviculaire), ce qui
+  portera le référentiel à 44 fiches.

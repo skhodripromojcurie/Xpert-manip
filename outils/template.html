@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protocoles d'imagerie médicale</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --text: #1c1e21;
+    --muted: #6b7280;
+    --border: #e2e4e8;
+    --accent: #2563eb;
+    --accent-light: #eaf0fe;
+    --tag-radio: #059669;
+    --tag-echo: #d97706;
+    --chip-bg: #f1f3f6;
+    --chip-text: #4b5563;
+    --chip-border: #e2e4e8;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 64px;
+  }
+
+  header {
+    max-width: 900px;
+    margin: 0 auto 24px;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    margin: 0 0 4px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0 0 20px;
+  }
+
+  .search-wrap {
+    max-width: 900px;
+    margin: 0 auto 20px;
+    position: relative;
+  }
+
+  #search {
+    width: 100%;
+    padding: 12px 16px 12px 40px;
+    font-size: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-bg) url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="%236b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>') no-repeat 12px center;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  #search:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+
+  .result-count {
+    max-width: 900px;
+    margin: 0 auto 16px;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .cards {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .modality-section {
+    max-width: 900px;
+    margin: 0 auto 28px;
+  }
+
+  .modality-section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+  }
+
+  .modality-section-header h2 {
+    font-size: 1.15rem;
+    margin: 0;
+  }
+
+  .modality-section-header.radio h2 { color: var(--tag-radio); }
+
+  .modality-section-count {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .section-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+
+  .card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .modality-tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 3px 10px;
+    border-radius: 999px;
+    color: #fff;
+  }
+
+  .modality-tag.radio { background: var(--tag-radio); }
+  .modality-tag.echo { background: var(--tag-echo); }
+
+  .card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .card-region {
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .field {
+    margin-top: 10px;
+  }
+
+  .field-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 3px;
+  }
+
+  .field-value {
+    font-size: 0.93rem;
+    line-height: 1.45;
+  }
+
+  .params-list {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .keywords-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 5px;
+  }
+
+  .keyword-chip {
+    display: inline-block;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--chip-bg);
+    color: var(--chip-text);
+    border: 1px solid var(--chip-border);
+  }
+
+  .no-results {
+    max-width: 900px;
+    margin: 40px auto;
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .disclaimer {
+    max-width: 900px;
+    margin: 32px auto 0;
+    padding: 12px 16px;
+    background: #fff8e1;
+    border: 1px solid #f0d98c;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: #7a5d00;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171a;
+      --card-bg: #1e2126;
+      --text: #e8e9ec;
+      --muted: #9aa0a8;
+      --border: #2c2f36;
+      --accent: #5b8def;
+      --accent-light: #1c2740;
+      --chip-bg: #262a31;
+      --chip-text: #b6bcc5;
+      --chip-border: #343841;
+    }
+    #search {
+      background-color: var(--card-bg);
+    }
+    .disclaimer {
+      background: #2a2410;
+      border-color: #4a3f10;
+      color: #e0c975;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Protocoles d'imagerie médicale</h1>
+  <p class="subtitle">Référentiel de protocoles de radiographie conventionnelle</p>
+</header>
+
+<div class="search-wrap">
+  <input type="text" id="search" placeholder="Rechercher (modalité, région, indication, mot-clé clinique : hallux valgus, sciatique, entorse...)" autocomplete="off">
+</div>
+
+<p class="result-count" id="resultCount"></p>
+
+<div class="cards" id="cards"></div>
+
+<p class="no-results" id="noResults" style="display:none;">Aucun protocole ne correspond à votre recherche.</p>
+
+<div class="disclaimer">
+  ⚠️ Contenu à visée d'exemple, basé sur des protocoles génériques courants. À valider et adapter selon les recommandations et le matériel de votre service (SFR, ACR, constructeur) avant tout usage clinique.
+</div>
+
+<script>
+{{PROTOCOLES}}
+  const cardsContainer = document.getElementById('cards');
+  const searchInput = document.getElementById('search');
+  const resultCount = document.getElementById('resultCount');
+  const noResults = document.getElementById('noResults');
+
+  const MODALITY_ORDER = ["Radiographie"];
+
+  function renderCard(p) {
+    const paramsHtml = p.parameters.map(item => `<li>${item}</li>`).join('');
+    const keywords = p.keywords || [];
+    const searchIndex = [
+      p.modality,
+      p.title,
+      p.region,
+      p.indication,
+      p.parameters.join(' '),
+      keywords.join(' ')
+    ].join(' ').toLowerCase();
+    const keywordsHtml = keywords.length === 0 ? '' : `
+        <div class="field">
+          <div class="field-label">Mots-clés</div>
+          <div class="keywords-list">${keywords.map(k => `<span class="keyword-chip">${k}</span>`).join('')}</div>
+        </div>`;
+    return `
+      <article class="card" data-search="${searchIndex}">
+        <div class="card-header">
+          <span class="modality-tag ${p.modalityClass}">${p.modality}</span>
+          <h2 class="card-title">${p.title}</h2>
+        </div>
+        <div class="card-region">${p.region}</div>
+        <div class="field">
+          <div class="field-label">Indication clinique</div>
+          <div class="field-value">${p.indication}</div>
+        </div>
+        <div class="field">
+          <div class="field-label">Paramètres techniques</div>
+          <ul class="params-list">${paramsHtml}</ul>
+        </div>${keywordsHtml}
+      </article>
+    `;
+  }
+
+  function renderAll() {
+    const sectionsHtml = MODALITY_ORDER.map(modality => {
+      const items = protocols.filter(p => p.modality === modality);
+      if (items.length === 0) return '';
+      const modalityClass = items[0].modalityClass;
+      return `
+        <section class="modality-section" data-modality="${modality}">
+          <div class="modality-section-header ${modalityClass}">
+            <h2>${modality}</h2>
+            <span class="modality-section-count">${items.length} protocole${items.length > 1 ? 's' : ''}</span>
+          </div>
+          <div class="section-cards">
+            ${items.map(renderCard).join('')}
+          </div>
+        </section>
+      `;
+    }).join('');
+
+    cardsContainer.innerHTML = sectionsHtml;
+    updateCount(protocols.length);
+  }
+
+  function updateCount(n) {
+    resultCount.textContent = n === protocols.length
+      ? `${n} protocole${n > 1 ? 's' : ''}`
+      : `${n} résultat${n > 1 ? 's' : ''} sur ${protocols.length}`;
+  }
+
+  function filterCards() {
+    const query = searchInput.value.trim().toLowerCase();
+    const sections = cardsContainer.querySelectorAll('.modality-section');
+    let visibleCount = 0;
+
+    sections.forEach(section => {
+      const cards = section.querySelectorAll('.card');
+      let visibleInSection = 0;
+
+      cards.forEach(card => {
+        const matches = card.dataset.search.includes(query);
+        card.style.display = matches ? '' : 'none';
+        if (matches) {
+          visibleInSection++;
+          visibleCount++;
+        }
+      });
+
+      section.style.display = visibleInSection > 0 ? '' : 'none';
+      const countEl = section.querySelector('.modality-section-count');
+      if (countEl) {
+        countEl.textContent = `${visibleInSection} protocole${visibleInSection > 1 ? 's' : ''}`;
+      }
+    });
+
+    updateCount(visibleCount);
+    noResults.style.display = visibleCount === 0 ? 'block' : 'none';
+  }
+
+  searchInput.addEventListener('input', filterCards);
+
+  renderAll();
+</script>
+
+</body>
+</html>
