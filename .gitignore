@@ -1,0 +1,7 @@
+# Sorties de build
+sortie/
+*.pdf
+
+# Système
+.DS_Store
+Thumbs.db
