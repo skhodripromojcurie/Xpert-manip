@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Vérifie que docs/index.html reste équivalent, en contenu, à la page d'origine.
+"""Vérifie qu'aucune des 42 fiches d'origine n'a dérivé.
 
-L'extraction des 42 fiches vers donnees/protocoles.json était une refonte de
-tuyauterie, pas de contenu : la page livrée doit dire exactement la même chose
-qu'avant. Ce script le prouve, en comparant la page générée à la version d'origine
-telle que git la conserve.
+L'extraction vers donnees/protocoles.json était une refonte de tuyauterie, pas de
+contenu. Ce script le prouve en comparant la page générée à la version d'origine
+que git conserve : les 42 fiches reçues doivent toujours dire exactement la même
+chose. Les fiches ajoutées depuis sont signalées, pas reprochées.
 
     python3 outils/verifier.py
 """
@@ -56,16 +56,21 @@ def main():
         ecarts.append("le script de rendu et de recherche a changé")
 
     fiches_o, fiches_a = lire_fiches(bloc_o), lire_fiches(bloc_a)
-    if len(fiches_o) != len(fiches_a):
-        ecarts.append(f"{len(fiches_o)} fiches à l'origine, {len(fiches_a)} aujourd'hui")
-    else:
-        for rang, (avant, apres) in enumerate(zip(fiches_o, fiches_a)):
-            apres = {k: v for k, v in apres.items() if k not in AJOUTS}
-            if avant != apres:
-                nom = fiches_a[rang].get("id", f"rang {rang}")
-                for champ in sorted(set(avant) | set(apres)):
-                    if avant.get(champ) != apres.get(champ):
-                        ecarts.append(f"{nom} : champ « {champ} » modifié")
+    # Les fiches d'origine n'ont pas d'identifiant : on les apparie par titre.
+    par_titre = {f["title"]: f for f in fiches_a}
+    for avant in fiches_o:
+        apres = par_titre.get(avant["title"])
+        if apres is None:
+            ecarts.append(f"fiche d'origine disparue : « {avant['title'][:60]} »")
+            continue
+        nom = apres.get("id", avant["title"][:40])
+        apres = {k: v for k, v in apres.items() if k not in AJOUTS}
+        for champ in sorted(set(avant) | set(apres)):
+            if avant.get(champ) != apres.get(champ):
+                ecarts.append(f"{nom} : champ « {champ} » modifié")
+
+    ajoutees = [f["id"] for f in fiches_a
+                if f["title"] not in {o["title"] for o in fiches_o}]
 
     if ecarts:
         print("Écarts avec la page d'origine :", file=sys.stderr)
@@ -73,8 +78,9 @@ def main():
             print(f"  - {e}", file=sys.stderr)
         raise SystemExit(1)
 
-    print(f"Équivalence confirmée : {len(fiches_a)} fiches, "
-          "contenu identique à la page d'origine.")
+    print(f"Les {len(fiches_o)} fiches d'origine sont intactes.")
+    if ajoutees:
+        print(f"Ajoutées depuis ({len(ajoutees)}) : {', '.join(ajoutees)}.")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ clinique.
 
 ## Contenu
 
-- `donnees/protocoles.json` — les 42 fiches, source unique de vérité.
+- `donnees/protocoles.json` — les 44 fiches, source unique de vérité.
   Voir `donnees/schema.md` pour le contrat des champs.
 - `docs/index.html` — la page livrée, **générée** depuis ce JSON. Fichier
   autonome : elle fonctionne sans serveur, hors connexion, et s'ouvre
@@ -39,5 +39,5 @@ vient du jugement et de la décision reste dans le dépôt privé.
 ## État
 
 - Diffusion en attente : GitHub Pages n'est pas activé.
-- Deux fiches restent à rédiger (pouce ; articulation sterno-claviculaire), ce qui
-  portera le référentiel à 44 fiches.
+- 44 fiches. Les deux dernières (pouce ; articulation sterno-claviculaire) sont
+  rédigées mais **en attente de relecture professionnelle** avant diffusion.
