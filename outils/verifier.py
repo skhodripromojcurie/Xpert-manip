@@ -25,6 +25,16 @@ DEBUT, FIN = "  const protocols = [\n", "  ];\n"
 # Champs ajoutés par la refonte : absents de l'origine, donc hors comparaison.
 AJOUTS = ("id",)
 
+# Modifications volontaires d'une fiche d'origine. Chaque entrée dit pourquoi : sans
+# cela le contrôle ne distingue pas un enrichissement décidé d'une dérive subie, et
+# on finirait par le désarmer.
+ENRICHISSEMENTS = {
+    ("pied-traumato", "parameters"):
+        "apophyse de la base du 5e métatarsien — fait de manuel remonté du cas 3",
+    ("pied-traumato", "keywords"):
+        "mots-clés de l'apophyse et du pied de l'enfant",
+}
+
 
 def decouper(html):
     i = html.index(DEBUT)
@@ -49,7 +59,7 @@ def main():
     pre_o, bloc_o, suf_o = decouper(origine)
     pre_a, bloc_a, suf_a = decouper(actuel)
 
-    ecarts = []
+    ecarts, assumes = [], []
     if pre_o != pre_a:
         ecarts.append("l'en-tête de la page (style, structure) a changé")
     if suf_o != suf_a:
@@ -66,7 +76,12 @@ def main():
         nom = apres.get("id", avant["title"][:40])
         apres = {k: v for k, v in apres.items() if k not in AJOUTS}
         for champ in sorted(set(avant) | set(apres)):
-            if avant.get(champ) != apres.get(champ):
+            if avant.get(champ) == apres.get(champ):
+                continue
+            raison = ENRICHISSEMENTS.get((nom, champ))
+            if raison:
+                assumes.append(f"{nom} · {champ} — {raison}")
+            else:
                 ecarts.append(f"{nom} : champ « {champ} » modifié")
 
     ajoutees = [f["id"] for f in fiches_a
@@ -78,7 +93,11 @@ def main():
             print(f"  - {e}", file=sys.stderr)
         raise SystemExit(1)
 
-    print(f"Les {len(fiches_o)} fiches d'origine sont intactes.")
+    intactes = len(fiches_o) - len({e.split(" · ")[0] for e in assumes})
+    print(f"Fiches d'origine : {intactes} intactes, "
+          f"{len(fiches_o) - intactes} enrichies volontairement.")
+    for a in assumes:
+        print(f"  · {a}")
     if ajoutees:
         print(f"Ajoutées depuis ({len(ajoutees)}) : {', '.join(ajoutees)}.")
 
