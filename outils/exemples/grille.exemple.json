@@ -38,7 +38,9 @@
       "taux_charges_salariales": 0.22,
       "date_debut": "2026-09-07",
       "prorata": "ouvres",
-      "statut": "actif"
+      "statut": "actif",
+      "pause_non_payee_heures": 1,
+      "pause_a_partir_de_heures": 6
     },
     {
       "nom": "Centre Rigel",

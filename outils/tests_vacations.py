@@ -124,8 +124,11 @@ class SurLesExemples(unittest.TestCase):
         self.assertIn("héritée de l'agenda", vac["motif"])
 
     def test_bloc_multi_jours_compte_par_jour(self):
-        """« 8-19h » du 7 au 9 vaut trois fois onze heures, pas onze."""
-        self.assertEqual(self.par_titre["8-19h"][0]["heures"], 33.0)
+        """« 8-19h » du 7 au 9 vaut trois jours, moins une heure de pause chacun."""
+        vac = self.par_titre["8-19h"][0]
+        self.assertEqual(vac["jours"], [date(2026, 9, i) for i in (7, 8, 9)])
+        self.assertEqual(vac["pause"], 3.0)
+        self.assertEqual(vac["heures"], 30.0)   # 3 × (11 h − 1 h)
 
     def test_mot_cle_prime_sur_la_couleur(self):
         """« Altair » n'a pas de colorId : sans priorité au texte, il passerait Orion."""
@@ -145,8 +148,8 @@ class SurLesExemples(unittest.TestCase):
     def test_plafond_hebdomadaire(self):
         semaines = {num: round(s["heures"], 2)
                     for (_, num), s in self.a["semaines"].items()}
-        self.assertEqual(semaines[37], 45.0)
-        self.assertEqual(semaines[38], 54.0)
+        self.assertEqual(semaines[37], 42.0)   # 30 h Orion + 8 h Vega + 4 h Altair
+        self.assertEqual(semaines[38], 51.0)
         depassees = [num for (_, num), s in self.a["semaines"].items() if s["depassement"]]
         self.assertEqual(depassees, [38])
 
@@ -181,6 +184,45 @@ class SurLesExemples(unittest.TestCase):
     def test_rapports_ne_plantent_pas(self):
         self.assertIn("Revenu net projeté", v.rapport_texte(self.a))
         self.assertEqual(v.rapport_json(self.a)["total_net"], 4397.73)
+
+
+class PauseNonPayee(unittest.TestCase):
+    """Une pause non payée n'est pas du travail effectif : ni salaire, ni plafond."""
+
+    EMP = {"pause_non_payee_heures": 1, "pause_a_partir_de_heures": 6}
+
+    def test_seuil(self):
+        self.assertEqual(v.pause_non_payee(self.EMP, 11.0), 1.0)
+        self.assertEqual(v.pause_non_payee(self.EMP, 5.0), 0.0)
+        self.assertEqual(v.pause_non_payee(self.EMP, 6.0), 0.0)
+
+    def test_employeur_sans_regle_de_pause(self):
+        self.assertEqual(v.pause_non_payee({"taux_net_heure": 28}, 11.0), 0.0)
+        self.assertEqual(v.pause_non_payee(None, 11.0), 0.0)
+
+    def test_la_pause_se_repartit_entre_jour_et_nuit(self):
+        """Sans savoir à quelle heure elle tombe, elle se retire au prorata."""
+        grille = {
+            "employeurs": [{"nom": "N", "taux_net_estime_heure_jour": 10,
+                            "taux_net_estime_heure_nuit": 20,
+                            "pause_non_payee_heures": 1,
+                            "pause_a_partir_de_heures": 6}],
+            "identification_agenda_google": {
+                "n": {"methode": "texte", "mot_cle": "N"}},
+        }
+        # 20h-8h un jeudi : 2 h de jour (20-21h et 7-8h), 10 h de nuit,
+        # le tout ramené de 12 h à 11 h par la pause.
+        ev = [v.Evenement("1", "N 20h-8h", datetime(2026, 9, 17),
+                          datetime(2026, 9, 18), True, None, False)]
+        a = v.analyser(grille, ev, 2026, 9)
+        vac = a["vacations"][0]
+        self.assertEqual(round(vac["heures"], 6), 11.0)
+        self.assertEqual(vac["pause"], 1.0)
+        cat = {}
+        for seg in vac["segments"]:
+            cat[seg["categorie"]] = cat.get(seg["categorie"], 0) + seg["heures"]
+        self.assertEqual({k: round(h, 4) for k, h in cat.items()},
+                         {"jour": round(2 * 11 / 12, 4), "nuit": round(10 * 11 / 12, 4)})
 
 
 class SalarieMensualise(unittest.TestCase):

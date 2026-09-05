@@ -519,6 +519,22 @@ def taux_net(employeur, categorie):
     return None, False, "aucun taux horaire dans la grille"
 
 
+def pause_non_payee(employeur, duree):
+    """Heures à retirer d'un créneau au titre de la pause.
+
+    Une journée de 11 h dont une heure de pause n'est ni payée, ni du travail
+    effectif : elle sort donc du salaire *et* du plafond hebdomadaire. Le seuil
+    évite de l'appliquer à une demi-journée.
+    """
+    if not employeur:
+        return 0.0
+    pause = float(employeur.get("pause_non_payee_heures") or 0)
+    if not pause:
+        return 0.0
+    seuil = float(employeur.get("pause_a_partir_de_heures") or 0)
+    return pause if duree > seuil else 0.0
+
+
 def est_mensualise(employeur):
     """Un salarié mensualisé touche son mois, pas ses heures."""
     if not employeur:
@@ -640,11 +656,20 @@ def analyser(grille, evenements, annee, mois, feries=()):
         jours = ev.jours
         alertes += _controler(ev, regle, jours)
 
-        segments = []
+        segments, pause_totale = [], 0.0
         for debut, fin in creneaux:
+            brut = heures(debut, fin)
+            pause = pause_non_payee(regle.employeur, brut)
+            pause_totale += pause
+            # Au prorata, pour que la pause se réparte comme le créneau entre
+            # jour, nuit et dimanche sans qu'on ait à dire à quelle heure elle tombe.
+            facteur = (brut - pause) / brut if brut > 0 else 1.0
             for a, b in decouper(debut, fin):
                 for categorie, h in classer(a, b, plage_nuit, feries):
-                    segments.append({"jour": a.date(), "categorie": categorie, "heures": h})
+                    segments.append({"jour": a.date(), "categorie": categorie,
+                                     "heures": h * facteur})
+        if pause_totale:
+            source += f", − {format_heures(pause_totale)} de pause non payée"
 
         montant, estime, manque = 0.0, False, None
         base, base_estimee = forfait(regle.employeur)
@@ -667,7 +692,7 @@ def analyser(grille, evenements, annee, mois, feries=()):
         vacations.append({
             "evenement": ev, "regle": regle, "motif": motif, "source": source,
             "creneaux": creneaux, "segments": segments, "jours": jours,
-            "heures": sum(s["heures"] for s in segments),
+            "heures": sum(s["heures"] for s in segments), "pause": pause_totale,
             "montant": montant, "estime": estime, "manque": manque, "mode": mode,
         })
 
@@ -804,7 +829,7 @@ def rapport_texte(a):
         etendue = (format_jour(jours[0]) if len(jours) == 1
                    else f"{format_jour(jours[0])} → {format_jour(jours[-1])}")
         montant = (format_euros(v["montant"]) if v["montant"] is not None
-                   else "non chiffrable")
+                   else "mensualisé" if v["mode"] == "mensualisé" else "non chiffrable")
         hors = "" if v["heures_mois"] else "   (hors mois, compté dans la semaine)"
         lignes.append(f"  {etendue:<30} {v['regle'].libelle:<24} "
                       f"{format_heures(v['heures']):>9}   {montant:>12}{hors}")
@@ -923,6 +948,7 @@ def rapport_json(a):
             "jours": [jour(j) for j in v["jours"]],
             "creneaux": [[d.isoformat(), f.isoformat()] for d, f in v["creneaux"]],
             "heures": round(v["heures"], 2),
+            "pause_non_payee": round(v["pause"], 2),
             "heures_dans_le_mois": round(v["heures_mois"], 2),
             "montant_net": None if v["montant"] is None else round(v["montant"], 2),
             "montant_estime": v["estime"],

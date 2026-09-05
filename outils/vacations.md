@@ -92,7 +92,21 @@ Par défaut : `matin` 9h-13h, `apres_midi` 14h-18h, `journee` 9h-13h + 14h-18h
 (ou `creneau`, ou `creneaux`), il remplace son créneau par défaut — c'est ainsi
 qu'un samedi matin en clinique vaut 8h30-12h30, soit 4 h.
 
-Aucune pause n'est déduite d'un horaire écrit au titre : `8-19h` compte 11 h.
+### La pause non payée
+
+Aucune pause n'est déduite par défaut : `8-19h` compte 11 h. Quand une journée
+en comporte une, l'employeur la déclare :
+
+```json
+"pause_non_payee_heures": 1,
+"pause_a_partir_de_heures": 6
+```
+
+`8-19h` vaut alors 10 h, et `8-13h` reste à 5 h — le seuil évite d'amputer une
+demi-journée. La pause sort du salaire **et** du plafond hebdomadaire : elle
+n'est pas du travail effectif. Comme rien ne dit à quelle heure elle tombe, elle
+se retire au prorata du créneau, ce qui préserve la répartition entre heures de
+jour, de nuit et de dimanche.
 
 ## Comment on calcule le net
 
