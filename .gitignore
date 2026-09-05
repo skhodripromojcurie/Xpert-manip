@@ -2,6 +2,14 @@
 sortie/
 *.pdf
 
+# Données personnelles de l'outil de vacations : ce dépôt est public, elles
+# n'y entrent jamais. Les fac-similés de outils/exemples/ sont, eux, versionnés.
+donnees/grille_tarifaire.json
+donnees/evenements.json
+donnees/feries*.json
+
+__pycache__/
+
 # Système
 .DS_Store
 Thumbs.db

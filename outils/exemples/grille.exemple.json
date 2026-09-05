@@ -1,0 +1,83 @@
+{
+  "_": "Fac-similé entièrement inventé. Même forme que la vraie grille, aucune valeur réelle. Sert à faire tourner outils/vacations.py et ses tests sans donnée personnelle dans le dépôt.",
+  "employeurs": [
+    {
+      "nom": "Cabinet Vega",
+      "type": "vacation_horaire",
+      "taux_net_heure": 25,
+      "jours_possibles": ["lundi", "mardi", "mercredi", "jeudi", "vendredi"],
+      "duree_type": ["demi_journee", "journee"],
+      "statut": "actif"
+    },
+    {
+      "nom": "Clinique Altair",
+      "type": "vacation_horaire",
+      "taux_net_heure": 27,
+      "jours_possibles": ["samedi_matin"],
+      "creneau_type": "8h30-12h30",
+      "statut": "actif"
+    },
+    {
+      "nom": "Centre Orion",
+      "type": "vacation_horaire",
+      "taux_net_heure": 29,
+      "statut": "actif"
+    },
+    {
+      "nom": "Centre Rigel",
+      "type": "vacation_nuit",
+      "taux_brut_heure_jour": 32,
+      "taux_brut_heure_nuit": 34,
+      "taux_net_estime_heure_jour": 24,
+      "taux_net_estime_heure_nuit": 26,
+      "taux_net_estime_heure_dimanche_ferie": 29,
+      "note_conversion": "estimation, non confirmee par fiche de paie",
+      "duree_shift_heures": 10,
+      "creneaux": ["21h-7h"],
+      "delai_paiement_mois": 1,
+      "statut": "actif"
+    },
+    {
+      "nom": "Groupe Sirius astreinte",
+      "type": "astreinte_forfait",
+      "forfait_net": 400,
+      "creneau": "19h-8h",
+      "statut": "actif"
+    }
+  ],
+  "couleur_agenda_par_defaut": "lavande",
+  "identification_agenda_google": {
+    "orion": {
+      "methode": "couleur",
+      "couleur_semaine_A": "lavande",
+      "couleur_semaine_B": "basilic",
+      "duree": "heures indiquees directement dans le titre de l'evenement (ex: 8-19h)",
+      "note": "commence le 7 septembre 2026"
+    },
+    "cabinet_vega": {
+      "methode": "texte",
+      "mot_cle": "Vega",
+      "duree_par_defaut": "journee entiere si rien precise dans le titre, sinon matin/apres-midi/journee explicite"
+    },
+    "altair": {
+      "methode": "texte",
+      "mot_cle": "Altair (peut apparaitre tronque a l'affichage, ex: Alta)",
+      "duree_par_defaut": "samedi matin par defaut, matin/apres-midi/journee si remplacement ponctuel en semaine"
+    },
+    "rigel": {
+      "methode": "texte",
+      "mot_cle": "Rigel",
+      "duree_par_defaut": "nuit"
+    },
+    "groupe_sirius_astreinte": {
+      "methode": "texte",
+      "mot_cle": "Sirius",
+      "duree_par_defaut": "journee"
+    }
+  },
+  "contrainte_legale": {
+    "plafond_hebdomadaire_heures": 48,
+    "type": "alerte_non_bloquante",
+    "note": "cumul tous employeurs confondus"
+  }
+}

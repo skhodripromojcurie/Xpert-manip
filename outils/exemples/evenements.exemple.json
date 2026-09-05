@@ -1,0 +1,22 @@
+{
+  "summary": "agenda de démonstration",
+  "timeZone": "Europe/Paris",
+  "events": [
+    {"id": "x01", "summary": "Congés Nord", "colorId": "4", "start": {"date": "2026-09-01"}, "end": {"date": "2026-09-04"}, "status": "confirmed"},
+    {"id": "x02", "summary": "Rentrée 9h30", "start": {"date": "2026-09-01"}, "end": {"date": "2026-09-02"}, "status": "confirmed"},
+    {"id": "x03", "summary": "Vega journée", "colorId": "5", "start": {"date": "2026-09-02"}, "end": {"date": "2026-09-03"}, "status": "confirmed"},
+    {"id": "x04", "summary": "Vega aprèm", "colorId": "5", "start": {"date": "2026-09-03"}, "end": {"date": "2026-09-04"}, "status": "confirmed"},
+    {"id": "x05", "summary": "Altair", "start": {"date": "2026-09-05"}, "end": {"date": "2026-09-06"}, "status": "confirmed"},
+    {"id": "x06", "summary": "8-19h", "start": {"date": "2026-09-07"}, "end": {"date": "2026-09-10"}, "status": "confirmed"},
+    {"id": "x07", "summary": "Vega journée", "colorId": "5", "start": {"date": "2026-09-10"}, "end": {"date": "2026-09-11"}, "status": "confirmed"},
+    {"id": "x08", "summary": "Alta 15h-19h", "start": {"date": "2026-09-10"}, "end": {"date": "2026-09-11"}, "status": "confirmed"},
+    {"id": "x09", "summary": "8-19h", "colorId": "10", "start": {"date": "2026-09-14"}, "end": {"date": "2026-09-17"}, "status": "confirmed"},
+    {"id": "x10", "summary": "Rigel 21h-7h", "colorId": "7", "start": {"date": "2026-09-17"}, "end": {"date": "2026-09-18"}, "status": "confirmed"},
+    {"id": "x11", "summary": "Vega journée", "colorId": "5", "start": {"date": "2026-09-18"}, "end": {"date": "2026-09-19"}, "status": "confirmed"},
+    {"id": "x12", "summary": "Rigel", "colorId": "7", "start": {"date": "2026-09-20"}, "end": {"date": "2026-09-21"}, "status": "confirmed"},
+    {"id": "x13", "summary": "Dentiste", "colorId": "3", "start": {"dateTime": "2026-09-22T11:00:00+02:00"}, "end": {"dateTime": "2026-09-22T12:00:00+02:00"}, "status": "confirmed"},
+    {"id": "x14", "summary": "Sirius astreinte", "colorId": "6", "start": {"date": "2026-09-26"}, "end": {"date": "2026-09-28"}, "status": "confirmed"},
+    {"id": "x15", "summary": "Vega journée", "colorId": "5", "start": {"date": "2026-10-01"}, "end": {"date": "2026-10-02"}, "status": "confirmed"},
+    {"id": "x16", "summary": "Réunion annulée", "colorId": "5", "start": {"date": "2026-09-08"}, "end": {"date": "2026-09-09"}, "status": "cancelled"}
+  ]
+}
