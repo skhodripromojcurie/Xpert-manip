@@ -380,6 +380,7 @@ def construire_regles(grille):
             "compte_dans_plafond", "astreinte" not in normaliser((emp or {}).get("type"))))
         regle.date_debut = (
             date.fromisoformat(bloc["date_debut"]) if bloc.get("date_debut")
+            else date.fromisoformat(emp["date_debut"]) if (emp or {}).get("date_debut")
             else lire_date_fr(bloc.get("note", "")) if "commence" in normaliser(bloc.get("note"))
             else None)
 
@@ -518,6 +519,71 @@ def taux_net(employeur, categorie):
     return None, False, "aucun taux horaire dans la grille"
 
 
+def est_mensualise(employeur):
+    """Un salarié mensualisé touche son mois, pas ses heures."""
+    if not employeur:
+        return False
+    return bool(employeur.get("brut_mensuel") or employeur.get("net_mensuel")
+                or normaliser(employeur.get("type")).startswith("salaire_mensuel"))
+
+
+def _jours_ouvres(debut, fin):
+    n, jour = 0, debut
+    while jour <= fin:
+        if jour.weekday() < 5:
+            n += 1
+        jour += timedelta(days=1)
+    return n
+
+
+def salaire_du_mois(employeur, annee, mois, heures_du_mois=0.0):
+    """Renvoie (montant net, détail) pour un employeur mensualisé, ou (None, None).
+
+    Un mois partiel — une entrée en poste le 15 — est proratisé. La méthode
+    change le résultat de plusieurs centaines d'euros : elle est donc affichée,
+    et se choisit par « prorata » (ouvres, calendaire, heures).
+    """
+    if not est_mensualise(employeur):
+        return None, None
+    premier = date(annee, mois, 1)
+    dernier = date(annee, mois, calendar.monthrange(annee, mois)[1])
+    debut = max(premier, date.fromisoformat(employeur["date_debut"])
+                if employeur.get("date_debut") else premier)
+    fin = min(dernier, date.fromisoformat(employeur["date_fin"])
+              if employeur.get("date_fin") else dernier)
+    if debut > fin:
+        return None, None
+
+    methode = normaliser(employeur.get("prorata")) or "ouvres"
+    mensuelles = float(employeur.get("heures_mensuelles") or 0) or None
+    if methode == "calendaire":
+        part = ((fin - debut).days + 1) / ((dernier - premier).days + 1)
+    elif methode == "heures" and mensuelles:
+        part = heures_du_mois / mensuelles
+    else:
+        methode, total = "ouvres", _jours_ouvres(premier, dernier)
+        part = _jours_ouvres(debut, fin) / total if total else 1.0
+
+    net_direct = employeur.get("net_mensuel")
+    charges = employeur.get("taux_charges_salariales")
+    if net_direct is not None:
+        base, estime = float(net_direct), False
+    else:
+        brut = float(employeur["brut_mensuel"])
+        if employeur.get("prime_13e_mois"):
+            # Versée en douze mensualités : un treizième de plus chaque mois.
+            brut += brut / 12
+        if charges is None:
+            return None, {"manque": "ni « net_mensuel » ni « taux_charges_salariales »"}
+        base, estime = brut * (1 - float(charges)), True
+
+    detail = {"part": part, "methode": methode, "estime": estime,
+              "complet": debut == premier and fin == dernier,
+              "debut": debut, "fin": fin,
+              "prime_13e_mois": bool(employeur.get("prime_13e_mois"))}
+    return base * part, detail
+
+
 def forfait(employeur):
     if not employeur:
         return None, False
@@ -582,7 +648,9 @@ def analyser(grille, evenements, annee, mois, feries=()):
 
         montant, estime, manque = 0.0, False, None
         base, base_estimee = forfait(regle.employeur)
-        if base is not None:
+        if est_mensualise(regle.employeur):
+            montant, mode = None, "mensualisé"
+        elif base is not None:
             par_jour = bool((regle.employeur or {}).get("forfait_par_jour"))
             montant = base * (len(jours) if par_jour else 1)
             estime = base_estimee
@@ -645,14 +713,38 @@ def analyser(grille, evenements, annee, mois, feries=()):
         bloc["heures"] += h_mois
         bloc["vacations"] += 1
         bloc["estime"] = bloc["estime"] or v["estime"]
+        bloc["mensualise"] = bloc.get("mensualise") or v["mode"] == "mensualisé"
         if v["montant"] is None:
-            bloc["manque"] = v["manque"]
-            bloc["montant"] = None
+            # Un mensualisé touche son mois : ses heures ne se tarifent pas, et
+            # leur absence de montant n'est pas un trou dans la grille.
+            if v["mode"] != "mensualisé":
+                bloc["manque"], bloc["montant"] = v["manque"], None
         elif bloc["montant"] is not None:
             bloc["montant"] += v["montant"] * part
 
+    for emp in grille.get("employeurs", []):
+        nom = emp.get("nom", "")
+        bloc = par_employeur.get(nom)
+        montant, detail = salaire_du_mois(
+            emp, annee, mois, bloc["heures"] if bloc else 0.0)
+        if detail is None:
+            continue
+        bloc = par_employeur.setdefault(nom, {
+            "heures": 0.0, "montant": 0.0, "vacations": 0, "estime": False,
+            "manque": None, "employeur": emp, "mensualise": True})
+        bloc["mensualise"] = True
+        if montant is None:
+            bloc["montant"], bloc["manque"] = None, detail["manque"]
+            alertes.append(f"{nom} est mensualisé mais son net n'est pas calculable : "
+                           f"{detail['manque']} dans la grille.")
+            continue
+        bloc["montant"], bloc["estime"] = montant, detail["estime"]
+        bloc["salaire"] = detail
+
     return {
         "annee": annee, "mois": mois, "plafond": plafond,
+        "taux_pas": (float(grille["taux_prelevement_source"])
+                     if grille.get("taux_prelevement_source") is not None else None),
         "regles": regles, "vacations": vacations, "autres": autres,
         "semaines": dict(sorted(semaines.items())),
         "par_employeur": par_employeur,
@@ -753,8 +845,21 @@ def rapport_texte(a):
             continue
         total += bloc["montant"]
         suffixe = "  (estimation)" if bloc["estime"] else ""
-        lignes.append(f"  {nom:<28} {format_heures(bloc['heures']):>9}   "
+        heures = (f"{format_heures(bloc['heures'])} *" if bloc.get("mensualise")
+                  else format_heures(bloc["heures"]))
+        lignes.append(f"  {nom:<28} {heures:>9}   "
                       f"{format_euros(bloc['montant']):>12}{suffixe}")
+        salaire = bloc.get("salaire")
+        if salaire:
+            assiette = "brut mensuel + 13e mois" if salaire["prime_13e_mois"] else "brut mensuel"
+            if salaire["complet"]:
+                lignes.append(f"  {'':<28} salaire mensualisé ({assiette}) — "
+                              f"* heures indicatives, sans effet sur le montant")
+            else:
+                lignes.append(f"  {'':<28} salaire mensualisé ({assiette}), mois partiel "
+                              f"{salaire['debut']:%d/%m}→{salaire['fin']:%d/%m} : prorata "
+                              f"{salaire['part']:.1%} en jours {salaire['methode']}")
+                lignes.append(f"  {'':<28} * heures indicatives, sans effet sur le montant")
         delai = (bloc["employeur"] or {}).get("delai_paiement_mois")
         if delai:
             mois_paie = a["mois"] + int(delai)
@@ -764,6 +869,11 @@ def rapport_texte(a):
     lignes.append(f"  {'TOTAL NET':<28} "
                   f"{format_heures(sum(b['heures'] for b in a['par_employeur'].values())):>9}   "
                   f"{format_euros(total):>12}" + ("  (partiel)" if incomplet else ""))
+    if a["taux_pas"] is not None:
+        apres = total * (1 - a["taux_pas"])
+        lignes.append(f"  {'après impôt sur le revenu':<28} {'':>9}   "
+                      f"{format_euros(apres):>12}"
+                      f"  (prélèvement à la source {a['taux_pas']:.1%})")
 
     lignes.append(_titre("Chevauchements"))
     ch = a["chevauchements"]
@@ -835,6 +945,7 @@ def rapport_json(a):
         } for nom, b in sorted(a["par_employeur"].items())},
         "total_net": round(sum(b["montant"] for b in a["par_employeur"].values()
                                if b["montant"] is not None), 2),
+        "taux_prelevement_source": a["taux_pas"],
         "chevauchements": {
             "entre_vacations": [{
                 "debut": c["debut"].isoformat(), "fin": c["fin"].isoformat(),

@@ -96,18 +96,60 @@ Aucune pause n'est déduite d'un horaire écrit au titre : `8-19h` compte 11 h.
 
 ## Comment on calcule le net
 
-- Taux horaire : `taux_net_heure`, ou `taux_net_estime_heure_{jour,nuit,dimanche_ferie}`
+Trois modes de rémunération, choisis d'après ce que la grille dit de l'employeur.
+
+### À l'heure
+
+- `taux_net_heure`, ou `taux_net_estime_heure_{jour,nuit,dimanche_ferie}`
   pour un employeur à taux variable. Une valeur `_estime` est signalée comme telle.
 - Un employeur qui n'a qu'un `taux_brut_*` n'est pas converti : le rapport dit
   « taux brut seul ».
-- **Forfait** (`forfait_net`, `forfait_net_estime`) : une fois par événement, pas
-  par jour — une astreinte de week-end est un forfait, pas deux. `"forfait_par_jour": true`
+### Au forfait
+
+- `forfait_net` ou `forfait_net_estime` : une fois par événement, pas par jour —
+  une astreinte de week-end est un forfait, pas deux. `"forfait_par_jour": true`
   inverse la règle.
+
+### Au mois
+
+Un salarié mensualisé touche son mois, pas ses heures. Ses créneaux restent lus
+et comptés — ils pèsent sur le plafond hebdomadaire, et peuvent chevaucher une
+vacation — mais ils ne produisent aucun euro : le montant vient du contrat.
+
+```json
+{
+  "nom": "…", "type": "salaire_mensuel",
+  "brut_mensuel": 4337.76, "prime_13e_mois": true,
+  "taux_charges_salariales": 0.22,
+  "heures_mensuelles": 151.67,
+  "date_debut": "2026-09-15", "prorata": "ouvres"
+}
+```
+
+- `net_mensuel` court-circuite le brut et n'est pas présenté comme une estimation.
+- `prime_13e_mois` ajoute un treizième du brut chaque mois (versement en douze
+  mensualités). Si le 13e mois est versé en une fois, ne pas l'activer.
+- `date_debut` / `date_fin` déclenchent le **prorata** d'un mois partiel. La
+  méthode change le résultat de plusieurs centaines d'euros, donc elle est
+  affichée : `ouvres` (défaut, jours du lundi au vendredi), `calendaire`, ou
+  `heures` (heures réellement posées / `heures_mensuelles`).
+- Sans `net_mensuel` ni `taux_charges_salariales`, rien n'est deviné : le
+  rapport dit ce qui manque.
+
+Le rapport marque les heures d'un mensualisé d'une `*` — « heures indicatives,
+sans effet sur le montant ».
 - Les heures sont découpées à minuit, puis ventilées : **dimanche ou férié**
   d'abord, sinon **nuit** (fenêtre `plage_nuit`, 21h-7h par défaut) ou **jour**.
   Les jours fériés se passent par `--feries fichier.json` (liste de `AAAA-MM-JJ`).
+### Communs aux trois modes
+
+- Les heures sont découpées à minuit, puis ventilées : dimanche ou férié
+  d'abord, sinon nuit ou jour (voir plus haut).
 - `delai_paiement_mois` ne change pas le montant : il ajoute le mois
   d'encaissement au rapport.
+- `taux_prelevement_source` (à la racine de la grille) ajoute une ligne « après
+  impôt sur le revenu » sous le total. Les « net » d'un bulletin de paie sont
+  des nets **avant** impôt : c'est cette ligne qui dit ce qui arrive sur le compte.
 - Un bloc à cheval sur deux mois est **proratisé** : seules les heures tombant
   dans le mois sont facturées, mais toutes comptent dans leur semaine.
 

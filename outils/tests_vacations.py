@@ -137,7 +137,7 @@ class SurLesExemples(unittest.TestCase):
         self.assertEqual(montants, {
             "Cabinet Vega": 700.0,        # 28 h × 25
             "Clinique Altair": 216.0,     # 8 h × 27
-            "Centre Orion": 1914.0,       # 66 h × 29
+            "Centre Orion": 2552.73,      # 4000 € × 78 % × 18/22 jours ouvrés
             "Centre Rigel": 529.0,        # 10 h nuit + 3 h dimanche + 7 h nuit
             "Groupe Sirius astreinte": 400.0,   # forfait du bloc, pas par jour
         })
@@ -180,7 +180,55 @@ class SurLesExemples(unittest.TestCase):
 
     def test_rapports_ne_plantent_pas(self):
         self.assertIn("Revenu net projeté", v.rapport_texte(self.a))
-        self.assertEqual(v.rapport_json(self.a)["total_net"], 3759.0)
+        self.assertEqual(v.rapport_json(self.a)["total_net"], 4397.73)
+
+
+class SalarieMensualise(unittest.TestCase):
+    """Un mensualisé touche son mois : ses heures ne se tarifent pas."""
+
+    GRILLE = {"nom": "X", "type": "salaire_mensuel", "brut_mensuel": 3000,
+              "taux_charges_salariales": 0.25, "heures_mensuelles": 151.67}
+
+    def test_mois_complet(self):
+        montant, detail = v.salaire_du_mois(self.GRILLE, 2026, 9)
+        self.assertEqual(round(montant, 2), 2250.0)      # 3000 × 75 %
+        self.assertTrue(detail["complet"])
+
+    def test_prime_13e_mois_etalee_sur_douze(self):
+        grille = dict(self.GRILLE, prime_13e_mois=True)
+        montant, _ = v.salaire_du_mois(grille, 2026, 9)
+        self.assertEqual(round(montant, 2), 2437.5)      # 3000 × 13/12 × 75 %
+
+    def test_prorata_jours_ouvres(self):
+        """Septembre 2026 : 22 jours ouvrés, dont 18 à partir du lundi 7."""
+        grille = dict(self.GRILLE, date_debut="2026-09-07")
+        montant, detail = v.salaire_du_mois(grille, 2026, 9)
+        self.assertEqual(detail["methode"], "ouvres")
+        self.assertEqual(round(detail["part"], 4), round(18 / 22, 4))
+        self.assertEqual(round(montant, 2), round(2250 * 18 / 22, 2))
+
+    def test_prorata_calendaire(self):
+        grille = dict(self.GRILLE, date_debut="2026-09-16", prorata="calendaire")
+        montant, detail = v.salaire_du_mois(grille, 2026, 9)
+        self.assertEqual(round(detail["part"], 4), round(15 / 30, 4))
+        self.assertEqual(round(montant, 2), 1125.0)
+
+    def test_net_mensuel_direct_n_est_pas_une_estimation(self):
+        montant, detail = v.salaire_du_mois(
+            {"nom": "X", "type": "salaire_mensuel", "net_mensuel": 2000}, 2026, 9)
+        self.assertEqual(montant, 2000.0)
+        self.assertFalse(detail["estime"])
+
+    def test_sans_taux_de_charges_on_ne_devine_pas(self):
+        montant, detail = v.salaire_du_mois(
+            {"nom": "X", "type": "salaire_mensuel", "brut_mensuel": 3000}, 2026, 9)
+        self.assertIsNone(montant)
+        self.assertIn("taux_charges_salariales", detail["manque"])
+
+    def test_un_horaire_n_est_pas_mensualise(self):
+        self.assertFalse(v.est_mensualise({"nom": "Y", "taux_net_heure": 28}))
+        self.assertEqual(v.salaire_du_mois({"nom": "Y", "taux_net_heure": 28},
+                                           2026, 9), (None, None))
 
 
 class EmployeurAbsentDeLaGrille(unittest.TestCase):
