@@ -425,21 +425,32 @@ def construire_regles(grille):
 
     # Les mots-clés priment sur les couleurs : un événement sans `colorId` hérite
     # de la couleur de l'agenda, qui ne dit rien de l'employeur. Le mot-clé, si.
-    regles.sort(key=lambda r: (r.methode != "texte", -max((len(m) for m in r.mots_cles), default=0)))
+    regles.sort(key=lambda r: r.methode != "texte")
     return regles
+
+
+def mots_cles_par_priorite(regles):
+    """Les mots-clés du plus long au plus court, tous employeurs mêlés.
+
+    La priorité se joue mot par mot, pas règle par règle : un employeur reconnu
+    à « matin » ne doit pas rafler « Crystal matin » simplement parce qu'un de
+    ses autres mots-clés est plus long que « crystal ». Le mot le plus précis
+    gagne, et « crystal » est plus précis que « matin ».
+    """
+    return sorted(((m, r) for r in regles for m in r.mots_cles if m),
+                  key=lambda paire: -len(paire[0]))
 
 
 # --------------------------------------------------------------------------
 # Identification, créneaux, tarification
 # --------------------------------------------------------------------------
 
-def identifier(ev, regles):
+def identifier(ev, regles, mots=None):
     """Renvoie (regle, motif) ou (None, None)."""
     plat = normaliser(ev.titre)
-    for regle in regles:
-        for mot in regle.mots_cles:
-            if mot and mot in plat:
-                return regle, f"mot-clé « {mot} »"
+    for mot, regle in (mots if mots is not None else mots_cles_par_priorite(regles)):
+        if mot in plat:
+            return regle, f"mot-clé « {mot} »"
     for regle in regles:
         if not regle.couleurs or ev.couleur not in regle.couleurs:
             continue
@@ -636,6 +647,9 @@ def salaire_du_mois(employeur, annee, mois, heures_du_mois=0.0):
         base, estime = brut * (1 - float(charges)), True
 
     detail = {"part": part, "methode": methode, "estime": estime,
+              "assiette": "net mensuel" if net_direct is not None else
+                          ("brut mensuel + 13e mois" if employeur.get("prime_13e_mois")
+                           else "brut mensuel"),
               "complet": debut == premier and fin == dernier,
               "debut": debut, "fin": fin,
               "prime_13e_mois": bool(employeur.get("prime_13e_mois"))}
@@ -686,10 +700,11 @@ def analyser(grille, evenements, annee, mois, feries=()):
     feries = set(feries)
 
     alertes = [a for r in regles for a in r.alertes]
+    mots = mots_cles_par_priorite(regles)
     vacations, autres = [], []
 
     for ev in evenements:
-        regle, motif = identifier(ev, regles)
+        regle, motif = identifier(ev, regles, mots)
         if regle is None:
             autres.append(ev)
             continue
@@ -792,6 +807,8 @@ def analyser(grille, evenements, annee, mois, feries=()):
     for emp in grille.get("employeurs", []):
         nom = emp.get("nom", "")
         bloc = par_employeur.get(nom)
+        if emp.get("note_rapport") and (bloc or est_mensualise(emp)):
+            alertes.append(f"{nom} : {emp['note_rapport']}")
         montant, detail = salaire_du_mois(
             emp, annee, mois, bloc["heures"] if bloc else 0.0)
         if detail is None:
@@ -839,12 +856,13 @@ def chevauchements(vacations, autres):
                                         "heures": heures(debut, fin)})
     for v in vacations:
         for ev in autres:
+            vus = set()
             for debut, fin in v["creneaux"]:
                 bas, haut = max(debut, ev.debut), min(fin, ev.fin)
-                if haut > bas:
+                if haut > bas and bas.date() not in vus:
+                    vus.add(bas.date())
                     avec_autres.append({"vacation": v, "evenement": ev,
                                         "debut": bas, "fin": haut})
-                    break
     return {"entre_vacations": entre_vacations, "avec_autres": avec_autres}
 
 
@@ -918,7 +936,7 @@ def rapport_texte(a):
                       f"{format_euros(bloc['montant']):>12}{suffixe}")
         salaire = bloc.get("salaire")
         if salaire:
-            assiette = "brut mensuel + 13e mois" if salaire["prime_13e_mois"] else "brut mensuel"
+            assiette = salaire["assiette"]
             if salaire["complet"]:
                 lignes.append(f"  {'':<28} salaire mensualisé ({assiette}) — "
                               f"* heures indicatives, sans effet sur le montant")
@@ -953,12 +971,14 @@ def rapport_texte(a):
                       f"« {c['a']['evenement'].titre} » ({c['a']['regle'].libelle}) "
                       f"et « {c['b']['evenement'].titre} » ({c['b']['regle'].libelle}).")
     if ch["avec_autres"]:
-        lignes.append("  Vacations posées sur un autre événement de l'agenda :")
+        lignes.append("  Vacations posées pendant un autre événement de l'agenda :")
+        par_evenement = {}
         for c in ch["avec_autres"]:
-            lignes.append(f"    · {format_jour(c['debut'].date())} "
-                          f"« {c['vacation']['evenement'].titre} » "
-                          f"({c['vacation']['regle'].libelle}) "
-                          f"pendant « {c['evenement'].titre} »")
+            par_evenement.setdefault(c["evenement"].titre, []).append(c["debut"].date())
+        for titre, jours in par_evenement.items():
+            dates = ", ".join(f"{j:%d/%m}" for j in sorted(jours))
+            lignes.append(f"    · « {titre} » — {len(jours)} jour"
+                          f"{'s' if len(jours) > 1 else ''} : {dates}")
 
     if a["alertes"]:
         lignes.append(_titre("À confirmer"))

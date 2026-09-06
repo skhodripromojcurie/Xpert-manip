@@ -53,6 +53,9 @@ reconnues au titre passeraient à la trappe. D'où l'ordre.
 - **Mot-clé** : le titre contient le mot. `mot_cle` accepte le commentaire qui
   l'accompagne dans la grille (`"Altair (…, ex: Alta)"` → `alta`, qui
   couvre les deux) ; `mots_cles: [...]` est la forme propre.
+  **La priorité se joue mot par mot, pas employeur par employeur** : le mot le
+  plus long gagne. Un employeur reconnu à des mots génériques (`matin`, `aprem`)
+  ne rafle donc pas « Crystal matin » — `crystal` est plus précis que `matin`.
 - **Couleur explicite** (`colorId` posé) : la couleur suffit.
 - **Couleur héritée** (pas de `colorId`) : elle ne porte aucune intention, donc
   le titre doit être **purement horaire** (`8-19h` oui, `Rentrée 9h30` non).
@@ -179,6 +182,10 @@ sans effet sur le montant ».
   d'abord, sinon nuit ou jour (voir plus haut).
 - `delai_paiement_mois` ne change pas le montant : il ajoute le mois
   d'encaissement au rapport.
+- `note_rapport` sur un employeur remonte tel quel dans « À confirmer » : c'est
+  l'endroit où attacher une réserve à un chiffre (un net relevé sur un mois
+  atypique, une date déduite et non confirmée) plutôt que de la laisser dormir
+  dans le JSON.
 - `taux_prelevement_source` (à la racine de la grille) ajoute une ligne « après
   impôt sur le revenu » sous le total. Les « net » d'un bulletin de paie sont
   des nets **avant** impôt : c'est cette ligne qui dit ce qui arrive sur le compte.

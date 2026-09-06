@@ -283,8 +283,9 @@ def construire(a):
         for c in ch["avec_autres"]:
             par_ev.setdefault(c["evenement"].titre, []).append(c["debut"].date())
         for titre, jours in par_ev.items():
-            points.append(f"Vacation posée pendant « {e(titre)} » : "
-                          f"{', '.join(f'{j:%d/%m}' for j in sorted(jours))}.")
+            points.append(f"Vacation posée pendant « {e(titre)} » — "
+                          f"{len(set(jours))} jour{'s' if len(set(jours)) > 1 else ''} : "
+                          f"{', '.join(f'{j:%d/%m}' for j in sorted(set(jours)))}.")
     points += [e(x) for x in dict.fromkeys(a["alertes"])]
     if points:
         out.append("<h2>À regarder</h2><div class=carte><ul class=pts>"

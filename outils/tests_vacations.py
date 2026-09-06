@@ -170,9 +170,11 @@ class SurLesExemples(unittest.TestCase):
                          {"Alta 15h-19h", "Vega journée"})
 
     def test_vacation_pendant_un_conge(self):
-        pendant = {c["evenement"].titre
-                   for c in self.a["chevauchements"]["avec_autres"]}
-        self.assertEqual(pendant, {"Congés Nord"})
+        """Un congé de trois jours qui couvre deux vacations compte deux jours."""
+        avec = self.a["chevauchements"]["avec_autres"]
+        self.assertEqual({c["evenement"].titre for c in avec}, {"Congés Nord"})
+        self.assertEqual(sorted(c["debut"].date() for c in avec),
+                         [date(2026, 9, 2), date(2026, 9, 3)])
 
     def test_hors_mois_compte_dans_la_semaine_pas_dans_le_revenu(self):
         octobre = self.par_titre["Vega journée"][-1]
@@ -225,6 +227,66 @@ class PauseNonPayee(unittest.TestCase):
             cat[seg["categorie"]] = cat.get(seg["categorie"], 0) + seg["heures"]
         self.assertEqual({k: round(h, 4) for k, h in cat.items()},
                          {"jour": round(2 * 11 / 12, 4), "nuit": round(10 * 11 / 12, 4)})
+
+
+class PrioriteDesMotsCles(unittest.TestCase):
+    """La priorité se joue mot par mot, pas règle par règle."""
+
+    GRILLE = {
+        "employeurs": [{"nom": "Crystal", "taux_net_heure": 28},
+                       {"nom": "Hopital", "taux_net_heure": 20}],
+        "identification_agenda_google": {
+            "crystal": {"methode": "texte", "mot_cle": "Crystal",
+                        "duree_par_defaut": "journee"},
+            # Un employeur reconnu à des mots courts et génériques, dont l'un
+            # (« apres-midi ») est plus long que « crystal ».
+            "hopital": {"methode": "texte",
+                        "mots_cles": ["matin", "aprem", "apres-midi", "nuit"],
+                        "duree_par_defaut": "matin"}},
+    }
+
+    def _qui(self, titre):
+        regles = v.construire_regles(self.GRILLE)
+        ev = v.Evenement("1", titre, datetime(2026, 9, 2), datetime(2026, 9, 3),
+                         True, None, False)
+        regle, _ = v.identifier(ev, regles)
+        return regle.libelle if regle else None
+
+    def test_le_mot_le_plus_precis_gagne(self):
+        """« Crystal matin » est un créneau Crystal, pas un poste d'hôpital."""
+        self.assertEqual(self._qui("Crystal matin"), "Crystal")
+        self.assertEqual(self._qui("Crystal aprèm"), "Crystal")
+
+    def test_les_titres_generiques_restent_a_l_hopital(self):
+        self.assertEqual(self._qui("Matin"), "Hopital")
+        self.assertEqual(self._qui("Week-end aprem"), "Hopital")
+        self.assertEqual(self._qui("Nuit supp"), "Hopital")
+
+    def test_un_repos_hebdomadaire_n_est_pas_un_poste(self):
+        self.assertIsNone(self._qui("RH prévisionnelle"))
+
+    def test_ordre_des_mots(self):
+        mots = [m for m, _ in v.mots_cles_par_priorite(v.construire_regles(self.GRILLE))]
+        self.assertEqual(mots, sorted(mots, key=len, reverse=True))
+
+
+class NoteDeGrille(unittest.TestCase):
+    """Une réserve attachée à un chiffre doit remonter dans le rapport."""
+
+    def test_note_rapport_remonte(self):
+        grille = {"employeurs": [{"nom": "H", "type": "salaire_mensuel",
+                                  "net_mensuel": 3000,
+                                  "note_rapport": "net relevé sur un mois chargé"}],
+                  "identification_agenda_google": {}}
+        a = v.analyser(grille, [], 2026, 9)
+        self.assertEqual(a["par_employeur"]["H"]["montant"], 3000)
+        self.assertIn("H : net relevé sur un mois chargé", a["alertes"])
+
+    def test_pas_de_note_pour_un_employeur_absent_du_mois(self):
+        grille = {"employeurs": [{"nom": "H", "taux_net_heure": 10,
+                                  "note_rapport": "à vérifier"}],
+                  "identification_agenda_google": {}}
+        self.assertEqual(v.analyser(grille, [], 2026, 9)["alertes"], [])
 
 
 class DureeAmbigueOuContrainte(unittest.TestCase):
