@@ -15,7 +15,14 @@ python3 outils/vacations.py --exemple                 # sur les fac-similés du 
 python3 outils/vacations.py --mois 2026-09            # sur donnees/
 python3 outils/vacations.py --mois 2026-09 --json     # même chose, exploitable
 python3 outils/tests_vacations.py                     # les contrôles
+
+python3 outils/rapport_html.py --mois 2026-09 --sortie ~/vacations.html
 ```
+
+`rapport_html.py` met la même analyse en page : un fichier HTML autonome, sans
+ressource externe, qui s'ouvre depuis un téléphone et s'imprime. Il ne recalcule
+rien — il lit `analyser()` et le met en forme, pour que le terminal et la page ne
+puissent pas diverger.
 
 ## Ce dépôt est public : les données restent dehors
 

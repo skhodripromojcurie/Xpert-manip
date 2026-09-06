@@ -24,6 +24,7 @@ python3 outils/build_site.py              # régénérer docs/index.html
 python3 outils/build_site.py --verifier   # docs/ est-il en phase avec donnees/ ?
 python3 outils/verifier.py                # le contenu a-t-il dévié de l'origine ?
 python3 outils/vacations.py --exemple     # l'outil de vacations, sur ses fac-similés
+python3 outils/rapport_html.py --exemple --sortie /tmp/v.html   # le même, mis en page
 python3 outils/tests_vacations.py         # ses contrôles
 ```
 

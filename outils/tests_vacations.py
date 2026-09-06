@@ -9,10 +9,12 @@ qui bascule d'un jour à l'autre, une astreinte qui ne pèse pas sur le plafond.
     python3 outils/tests_vacations.py
 """
 import json
+import re
 import unittest
 from datetime import date, datetime
 from pathlib import Path
 
+import rapport_html
 import vacations as v
 
 EXEMPLES = Path(__file__).resolve().parent / "exemples"
@@ -271,6 +273,45 @@ class SalarieMensualise(unittest.TestCase):
         self.assertFalse(v.est_mensualise({"nom": "Y", "taux_net_heure": 28}))
         self.assertEqual(v.salaire_du_mois({"nom": "Y", "taux_net_heure": 28},
                                            2026, 9), (None, None))
+
+
+class MiseEnPage(unittest.TestCase):
+    """La page HTML ne recalcule rien : elle doit dire ce que dit l'analyse."""
+
+    @classmethod
+    def setUpClass(cls):
+        grille = json.loads((EXEMPLES / "grille.exemple.json").read_text(encoding="utf-8"))
+        evenements = v.charger_evenements(EXEMPLES / "evenements.exemple.json",
+                                          grille.get("couleur_agenda_par_defaut"))
+        cls.page = rapport_html.construire(v.analyser(grille, evenements, 2026, 9))
+
+    def test_page_autonome(self):
+        self.assertTrue(self.page.startswith("<!doctype html>"))
+        self.assertTrue(self.page.rstrip().endswith("</html>"))
+        self.assertIn("<title>Vacations septembre 2026</title>", self.page)
+        # Aucune ressource externe : la page doit s'ouvrir hors connexion.
+        self.assertNotIn("http://", self.page)
+        self.assertNotIn("https://", self.page)
+
+    def test_les_chiffres_sont_ceux_de_l_analyse(self):
+        # Les montants portent une espace fine insécable : on normalise avant
+        # de comparer, plutôt que de la recopier dans le test.
+        page = re.sub(r"\s+", " ", self.page)
+        self.assertIn("4 397,73 €", page)          # total net
+        self.assertIn("2 552,73 €", page)          # Orion, mensualisé
+        self.assertIn("51 h", page)                # la semaine hors plafond
+
+    def test_le_titre_d_un_evenement_est_echappe(self):
+        """Un titre d'agenda est du texte saisi : il ne doit pas devenir du HTML."""
+        grille = {"employeurs": [{"nom": "X", "taux_net_heure": 10}],
+                  "identification_agenda_google": {"x": {"methode": "texte",
+                                                         "mot_cle": "X",
+                                                         "duree_par_defaut": "matin"}}}
+        ev = [v.Evenement("1", "X <script>alert(1)</script>", datetime(2026, 9, 2),
+                          datetime(2026, 9, 3), True, None, False)]
+        page = rapport_html.construire(v.analyser(grille, ev, 2026, 9))
+        self.assertNotIn("<script>alert", page)
+        self.assertIn("&lt;script&gt;", page)
 
 
 class EmployeurAbsentDeLaGrille(unittest.TestCase):
