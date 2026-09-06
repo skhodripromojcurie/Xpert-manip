@@ -77,10 +77,15 @@ CRENEAUX_DEFAUT = {
 
 MOTS_DUREE = (
     ("journee", ("journee entiere", "journee", "jour entier", "full")),
-    ("apres_midi", ("apres-midi", "apres midi", "aprem", "apm", "pm")),
-    ("matin", ("matinee", "matin", "am")),
+    ("apres_midi", ("apres-midi", "apres midi", "aprem", "apm")),
+    ("matin", ("matinee", "matin")),
     ("nuit", ("nuit", "garde de nuit")),
 )
+
+# « AM » se lit « ante meridiem » en anglais et « après-midi » en français — deux
+# demi-journées opposées. Pareil pour « PM ». On ne tranche pas à la place de
+# celui qui a écrit le titre : on le signale et on retombe sur la durée par défaut.
+ABREVIATIONS_AMBIGUES = ("am", "pm")
 
 PLACEHOLDERS = ("a confirmer", "a definir", "a preciser", "non defini", "inconnu")
 
@@ -271,6 +276,7 @@ class Regle:
     employeur: dict = None
     creneaux: dict = field(default_factory=dict)
     defaut: str = None
+    restrictions: dict = field(default_factory=dict)   # jour -> créneau imposé
     exige_horaire: bool = False
     compte_plafond: bool = True
     date_debut: date = None
@@ -327,6 +333,15 @@ def mot_cle_duree(titre):
     return None
 
 
+def abreviation_ambigue(titre):
+    """Renvoie l'abréviation de demi-journée non tranchable du titre, s'il y en a une."""
+    plat = normaliser(titre)
+    for mot in ABREVIATIONS_AMBIGUES:
+        if re.search(rf"(?<![a-z]){mot}(?![a-z])", plat):
+            return mot.upper()
+    return None
+
+
 def _apparier_employeur(cle, employeurs):
     """Relie « cabinet_vega » à l'entrée « Cabinet Vega » de la grille."""
     jetons = set(normaliser(cle.replace("_", " ")).split())
@@ -369,6 +384,14 @@ def construire_regles(grille):
         if isinstance(creneau_type, str) and lire_plages(creneau_type) and regle.defaut:
             regle.creneaux[regle.defaut] = creneau_type
         regle.creneaux.update(bloc.get("creneaux_par_defaut") or {})
+
+        # « jours_possibles: ["samedi_matin"] » ne dit pas seulement quel jour est
+        # ouvert : il dit qu'on n'y fait que le matin. Un titre sans précision ne
+        # doit donc pas y valoir une journée entière.
+        for jour in (emp or {}).get("jours_possibles") or []:
+            morceaux = normaliser(jour).replace("-", "_").split("_")
+            if len(morceaux) > 1 and morceaux[0] in JOURS_FR:
+                regle.restrictions[morceaux[0]] = "_".join(morceaux[1:])
 
         # « heures indiquées directement dans le titre » : sans horaire au titre,
         # la couleur seule ne suffit pas à faire d'un événement une vacation.
@@ -448,18 +471,37 @@ def resoudre_creneaux(ev, regle):
         source = f"horaire du titre ({plage[0]:02d}h{plage[1]:02d}–{plage[2]:02d}h{plage[3]:02d})"
         creneaux = [poser(j, plage) for j in jours]
     else:
-        cle = mot_cle_duree(ev.titre) or regle.defaut
-        gabarit = regle.creneaux.get(cle) if cle else None
-        plages = lire_plages(gabarit) if gabarit else []
-        if not plages:
+        explicite = mot_cle_duree(ev.titre)
+        ambigu = abreviation_ambigue(ev.titre) if explicite is None else None
+        if ambigu:
             alertes.append(
-                f"« {ev.titre} » : ni horaire au titre, ni durée par défaut "
-                f"utilisable pour {regle.libelle} — non chiffré.")
-            return [], "indéterminée", alertes
-        explicite = mot_cle_duree(ev.titre) is not None
+                f"« {ev.titre} » : « {ambigu} » peut se lire matin ou après-midi. "
+                f"La durée par défaut de {regle.libelle} a été appliquée — à trancher "
+                f"dans le titre, ou par « mots_cles » dans la grille.")
+        creneaux, gabarits = [], []
+        for j in jours:
+            impose = regle.restrictions.get(JOURS_FR[j.weekday()])
+            cle = explicite or impose or regle.defaut
+            gabarit = regle.creneaux.get(cle) if cle else None
+            plages = lire_plages(gabarit) if gabarit else []
+            if not plages:
+                alertes.append(
+                    f"« {ev.titre} » : ni horaire au titre, ni durée par défaut "
+                    f"utilisable pour {regle.libelle} — non chiffré.")
+                return [], "indéterminée", alertes
+            if impose and not explicite and impose != regle.defaut:
+                alertes.append(
+                    f"« {ev.titre} » ({format_jour(j)}) : la grille limite "
+                    f"{regle.libelle} au {JOURS_FR[j.weekday()]} "
+                    f"{impose.replace('_', ' ')} — compté ainsi, et non en "
+                    f"{(regle.defaut or 'journee').replace('_', ' ')}.")
+            gabarits.append((cle, gabarit))
+            creneaux += [poser(j, p) for p in plages]
+        cle, gabarit = gabarits[0]
         source = (f"{cle.replace('_', ' ')} ({gabarit})" if explicite
                   else f"défaut {cle.replace('_', ' ')} ({gabarit})")
-        creneaux = [poser(j, p) for j in jours for p in plages]
+        if len({g[0] for g in gabarits}) > 1:
+            source += ", variable selon le jour"
 
     if len(jours) > 1:
         alertes.append(

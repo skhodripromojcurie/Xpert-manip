@@ -73,8 +73,19 @@ Dans l'ordre :
    un titre contenant une date se lirait comme un horaire.
 2. **La durée de l'événement**, s'il est horodaté.
 3. **Le créneau par défaut** — `matin`, `apres_midi`, `journee`, `nuit`, choisi
-   par un mot du titre (« aprèm », « journée »…) ou, à défaut, par la durée par
-   défaut de l'employeur.
+   dans cet ordre : un mot du titre (« aprèm », « journée »…), puis la contrainte
+   du jour, puis la durée par défaut de l'employeur.
+
+**`jours_possibles` ne dit pas que quels jours sont ouverts.** Une entrée de la
+forme `samedi_matin` dit aussi qu'on n'y fait que le matin : un titre sans
+précision y vaut une demi-journée, pas une journée, et le rapport le signale.
+Un mot explicite dans le titre reprend la main.
+
+**« AM » et « PM » ne sont pas tranchés.** « AM » se lit *ante meridiem* en
+anglais et *après-midi* en français — deux demi-journées opposées, et un écart
+d'argent réel. L'outil applique la durée par défaut et le signale, plutôt que de
+choisir. Pour lever l'ambiguïté : écrire le mot dans le titre, ou déclarer la
+convention par `mots_cles` dans la grille.
 
 **Un bloc « journée entière » sur plusieurs jours vaut une vacation par jour.**
 « 8-19h » du 14 au 16 fait 33 h, pas 11. Le rapport le signale à chaque fois.

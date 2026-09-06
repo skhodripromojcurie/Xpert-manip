@@ -11,7 +11,7 @@ qui bascule d'un jour à l'autre, une astreinte qui ne pèse pas sur le plafond.
 import json
 import re
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import rapport_html
@@ -140,7 +140,7 @@ class SurLesExemples(unittest.TestCase):
         montants = {nom: round(b["montant"], 2)
                     for nom, b in self.a["par_employeur"].items()}
         self.assertEqual(montants, {
-            "Cabinet Vega": 700.0,        # 28 h × 25
+            "Cabinet Vega": 900.0,        # 36 h × 25
             "Clinique Altair": 216.0,     # 8 h × 27
             "Centre Orion": 2552.73,      # 4000 € × 78 % × 18/22 jours ouvrés
             "Centre Rigel": 529.0,        # 10 h nuit + 3 h dimanche + 7 h nuit
@@ -157,7 +157,7 @@ class SurLesExemples(unittest.TestCase):
 
     def test_astreinte_hors_plafond(self):
         s39 = self.a["semaines"][(2026, 39)]
-        self.assertEqual(s39["heures"], 7.0)          # la nuit Rigel du lundi
+        self.assertEqual(s39["heures"], 15.0)         # la nuit Rigel du lundi + Vega
         self.assertEqual(s39["hors_plafond"], 18.0)   # l'astreinte du week-end
 
     def test_chevauchement(self):
@@ -178,14 +178,14 @@ class SurLesExemples(unittest.TestCase):
         octobre = self.par_titre["Vega journée"][-1]
         self.assertEqual(octobre["jours"], [date(2026, 10, 1)])
         self.assertEqual(octobre["heures_mois"], 0.0)
-        self.assertEqual(round(self.a["par_employeur"]["Cabinet Vega"]["heures"], 2), 28.0)
+        self.assertEqual(round(self.a["par_employeur"]["Cabinet Vega"]["heures"], 2), 36.0)
 
     def test_jour_hors_grille_signale(self):
         self.assertTrue(any("n'est pas prévu le jeudi" in x for x in self.a["alertes"]))
 
     def test_rapports_ne_plantent_pas(self):
         self.assertIn("Revenu net projeté", v.rapport_texte(self.a))
-        self.assertEqual(v.rapport_json(self.a)["total_net"], 4397.73)
+        self.assertEqual(v.rapport_json(self.a)["total_net"], 4597.73)
 
 
 class PauseNonPayee(unittest.TestCase):
@@ -225,6 +225,48 @@ class PauseNonPayee(unittest.TestCase):
             cat[seg["categorie"]] = cat.get(seg["categorie"], 0) + seg["heures"]
         self.assertEqual({k: round(h, 4) for k, h in cat.items()},
                          {"jour": round(2 * 11 / 12, 4), "nuit": round(10 * 11 / 12, 4)})
+
+
+class DureeAmbigueOuContrainte(unittest.TestCase):
+    """Deux façons de se tromper de demi-journée, pour de l'argent réel."""
+
+    def _analyser(self, titre, jour, employeur):
+        grille = {"employeurs": [employeur],
+                  "identification_agenda_google": {
+                      "x": {"methode": "texte", "mot_cle": "X",
+                            "duree_par_defaut": "journee entiere si rien precise"}}}
+        ev = [v.Evenement("1", titre, datetime.combine(jour, datetime.min.time()),
+                          datetime.combine(jour + timedelta(days=1), datetime.min.time()),
+                          True, None, False)]
+        return v.analyser(grille, ev, jour.year, jour.month)
+
+    EMP = {"nom": "X", "taux_net_heure": 10,
+           "jours_possibles": ["lundi", "mardi", "mercredi", "jeudi",
+                               "vendredi", "samedi_matin"]}
+
+    def test_am_n_est_pas_tranche(self):
+        """« AM » se lit matin en anglais, après-midi en français : on ne choisit pas."""
+        self.assertEqual(v.abreviation_ambigue("X AM"), "AM")
+        self.assertEqual(v.abreviation_ambigue("X PM"), "PM")
+        self.assertIsNone(v.abreviation_ambigue("X matin"))
+        self.assertIsNone(v.abreviation_ambigue("Amiens"))   # pas un mot isolé
+        a = self._analyser("X AM", date(2026, 9, 8), self.EMP)   # un mardi
+        self.assertEqual(a["vacations"][0]["heures"], 8.0)       # la durée par défaut
+        self.assertTrue(any("peut se lire matin ou après-midi" in x for x in a["alertes"]))
+
+    def test_samedi_matin_limite_le_samedi(self):
+        """« jours_possibles: [samedi_matin] » dit aussi que le samedi est un matin."""
+        a = self._analyser("X", date(2026, 9, 12), self.EMP)     # un samedi
+        self.assertEqual(a["vacations"][0]["heures"], 4.0)       # et non 8 h
+        self.assertTrue(any("limite X au samedi matin" in x for x in a["alertes"]))
+
+    def test_la_contrainte_ne_touche_pas_les_autres_jours(self):
+        a = self._analyser("X", date(2026, 9, 10), self.EMP)     # un jeudi
+        self.assertEqual(a["vacations"][0]["heures"], 8.0)
+
+    def test_un_titre_explicite_prime_sur_la_contrainte(self):
+        a = self._analyser("X journée", date(2026, 9, 12), self.EMP)
+        self.assertEqual(a["vacations"][0]["heures"], 8.0)
 
 
 class SalarieMensualise(unittest.TestCase):
@@ -297,7 +339,7 @@ class MiseEnPage(unittest.TestCase):
         # Les montants portent une espace fine insécable : on normalise avant
         # de comparer, plutôt que de la recopier dans le test.
         page = re.sub(r"\s+", " ", self.page)
-        self.assertIn("4 397,73 €", page)          # total net
+        self.assertIn("4 597,73 €", page)          # total net
         self.assertIn("2 552,73 €", page)          # Orion, mensualisé
         self.assertIn("51 h", page)                # la semaine hors plafond
 
