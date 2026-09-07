@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import rapport_html
+import simulateur
 import vacations as v
 
 EXEMPLES = Path(__file__).resolve().parent / "exemples"
@@ -621,6 +622,129 @@ class EmployeurAbsentDeLaGrille(unittest.TestCase):
         self.assertEqual(a["vacations"][0]["heures"], 11.0)
         self.assertIsNone(a["vacations"][0]["montant"])
         self.assertTrue(any("revenu non calculable" in x for x in a["alertes"]))
+
+
+class Simulateur(unittest.TestCase):
+    """Le simulateur : coûts de déplacement, rentabilité, optimisations."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.grille = json.loads(
+            (EXEMPLES / "grille.exemple.json").read_text(encoding="utf-8"))
+        cls.trajets = simulateur.charger_trajets(EXEMPLES / "trajets.exemple.json")
+        cls.par_nom = {s.libelle: s for s in cls.trajets.sites}
+
+    def test_lecture_des_trajets(self):
+        self.assertEqual(self.trajets.cout_par_km, 0.09)
+        vega = self.par_nom["Cabinet Vega — Bourg-Nord"]
+        self.assertEqual(vega.km_aller, 10)
+        self.assertEqual(round(vega.heures_trajet, 4), round(40 / 60, 4))
+        self.assertEqual(vega.stationnement_eur, 0.0)      # « gratuit » vaut zéro
+
+    def test_un_stationnement_variable_n_est_pas_zero(self):
+        """« Selon la place trouvée » ne se chiffre pas — il ne vaut pas gratuit."""
+        sud = self.par_nom["Cabinet Vega — Bourg-Sud"]
+        self.assertTrue(sud.stationnement_incertain)
+        self.assertIsNone(sud.stationnement_eur)
+
+    def test_cout_aller_retour(self):
+        vega = self.par_nom["Cabinet Vega — Bourg-Nord"]
+        seance = simulateur.Seance(date(2026, 9, 2), vega, "journee", gamelle=True)
+        carburant, stationnement, repas, total, manque = simulateur.cout_seance(
+            seance, self.trajets)
+        self.assertEqual(round(carburant, 2), 1.80)        # 2 × 10 km × 0,09
+        self.assertEqual((stationnement, repas, manque), (0.0, 0.0, []))
+        self.assertEqual(round(total, 2), 1.80)
+
+    def test_le_repas_s_ajoute_sans_gamelle(self):
+        vega = self.par_nom["Cabinet Vega — Bourg-Nord"]
+        seance = simulateur.Seance(date(2026, 9, 2), vega, "journee", gamelle=False)
+        self.assertEqual(round(simulateur.cout_seance(seance, self.trajets)[3], 2),
+                         11.80)
+
+    def test_un_mot_generique_ne_rattache_pas_un_employeur(self):
+        """« Imagerie » est partagé : il ne doit pas apparier deux employeurs."""
+        regles = v.construire_regles({
+            "employeurs": [{"nom": "Crystal Imagerie", "taux_net_heure": 28},
+                           {"nom": "Groupe Resonance Imagerie",
+                            "type": "salaire_mensuel", "net_mensuel": 3000}],
+            "identification_agenda_google": {
+                "crystal": {"methode": "texte", "mot_cle": "Crystal",
+                            "duree_par_defaut": "journee"},
+                "resonance": {"methode": "couleur", "couleur_semaine_A": "glycine",
+                              "duree": "heures indiquees dans le titre"}}})
+        site = simulateur.Site("Résonance Imagerie", "", "", "gratuit")
+        self.assertEqual(
+            simulateur._regle_du_site(site, regles).cle_employeur,
+            "Groupe Resonance Imagerie")
+
+    def test_rentabilite_classee_et_separee(self):
+        surs, incertains = simulateur.rentabilite(self.grille, self.trajets, 2026, 9)
+        # Le site au stationnement variable est mis à part, pas noyé dans le tri.
+        self.assertTrue(all("Bourg-Sud" not in x["site"].libelle for x in surs))
+        self.assertTrue(any("Bourg-Sud" in x["site"].libelle for x in incertains))
+        # Un salarié mensualisé n'a pas de rentabilité horaire : il est absent.
+        self.assertTrue(all("Orion" not in x["site"].libelle
+                            for x in surs + incertains))
+        valeurs = [x["par_heure_travaillee"] for x in surs]
+        self.assertEqual(valeurs, sorted(valeurs, reverse=True))
+
+    def test_le_trajet_renverse_le_classement(self):
+        """Altair paie mieux à l'heure travaillée, moins à l'heure passée."""
+        surs, _ = simulateur.rentabilite(self.grille, self.trajets, 2026, 9)
+        altair = next(x for x in surs if "Altair" in x["site"].libelle)
+        vega = next(x for x in surs
+                    if "Bourg-Nord" in x["site"].libelle and x["type"] == "journee")
+        self.assertGreater(altair["par_heure_travaillee"], vega["par_heure_travaillee"])
+        self.assertLess(altair["par_heure_passee"], vega["par_heure_passee"])
+
+    def test_un_jour_au_titre_mal_forme_n_est_pas_propose(self):
+        """« 8h19h » n'est lu par personne : le jour n'est pas libre pour autant."""
+        ev = [v.Evenement("1", "8h19h", datetime(2026, 9, 2), datetime(2026, 9, 3),
+                          True, "basilic", True)]
+        a = v.analyser(self.grille, ev, 2026, 9)
+        douteux = simulateur.jours_douteux(a, v.construire_regles(self.grille))
+        self.assertEqual(list(douteux), [date(2026, 9, 2)])
+        self.assertNotIn(date(2026, 9, 2), simulateur.creneaux_libres(a, douteux))
+
+    def test_une_seance_qui_casse_le_repos_est_ecartee(self):
+        """Une nuit collée à une journée n'est pas une option : elle est illégale."""
+        ev = [v.Evenement("1", "Vega journée", datetime(2026, 9, 3),
+                          datetime(2026, 9, 4), True, None, False)]
+        a = v.analyser(self.grille, ev, 2026, 9)
+        _, ecartes, _ = simulateur.candidats(self.grille, self.trajets, a, 2026, 9)
+        self.assertTrue(any(s.jour == date(2026, 9, 2) and s.type_creneau == "nuit"
+                            for s, _ in ecartes))
+
+    def test_les_trois_optimisations(self):
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            self.grille.get("couleur_agenda_par_defaut"))
+        r = simulateur.scenarios(self.grille, evenements, self.trajets, 2026, 9,
+                                 cible=5000)
+        noms = [s["nom"] for s in r["scenarios"]]
+        self.assertEqual(noms[:3], ["Planning nu", "Revenu maximal",
+                                    "Rendement maximal"])
+        nu, revenu, rendement = r["scenarios"][:3]
+        # Le revenu maximal ne peut pas rapporter moins que le planning nu.
+        self.assertGreaterEqual(revenu["net_apres_cout"], nu["net_apres_cout"])
+        # Et il ne peut pas battre le rendement maximal sur son propre terrain.
+        self.assertGreaterEqual(rendement["par_heure_passee"],
+                                revenu["par_heure_passee"] - 1e-9)
+        # L'optimiseur n'ajoute rien qui franchisse le plafond — mais il ne peut
+        # pas retirer un dépassement déjà présent dans le planning fixe.
+        for s in r["scenarios"]:
+            self.assertEqual(len(s["depassements"]), len(nu["depassements"]))
+
+    def test_une_cible_hors_d_atteinte_est_annoncee(self):
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            self.grille.get("couleur_agenda_par_defaut"))
+        r = simulateur.scenarios(self.grille, evenements, self.trajets, 2026, 9,
+                                 cible=99999)
+        cible = r["scenarios"][-1]
+        self.assertTrue(cible["impossible"])
+        self.assertEqual(cible["seances"], [])
 
 
 if __name__ == "__main__":

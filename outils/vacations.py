@@ -730,6 +730,14 @@ def analyser(grille, evenements, annee, mois, feries=()):
         regle, motif = identifier(ev, regles, mots)
         if regle is None:
             autres.append(ev)
+            if (ev.couleur and any(ev.couleur in r.couleurs for r in regles)
+                    and re.search(r"\d\s*[hH]", ev.titre)
+                    and not lire_plage(ev.titre)[0]):
+                alertes.append(
+                    f"« {ev.titre} » ({format_jour(ev.jours[0])}) porte la couleur "
+                    f"d'un employeur et ressemble à un horaire, mais ne se lit pas "
+                    f"comme une plage — un séparateur manque probablement "
+                    f"(« 8-19h », pas « 8h19h »). Le créneau n'est pas compté.")
             continue
         creneaux, source, alertes_creneau = resoudre_creneaux(ev, regle)
         jours = ev.jours

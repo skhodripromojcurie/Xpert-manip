@@ -1,0 +1,60 @@
+{
+  "_": "Fac-similé inventé, même forme que le vrai fichier de trajets. Aucune adresse ni distance réelle.",
+  "domicile": {
+    "ville": "Villeneuve",
+    "note": "adresse exacte non renseignée - distances saisies à la main, pas de géocodage"
+  },
+  "sites": [
+    {
+      "employeur": "Cabinet Vega",
+      "site": "Bourg-Nord",
+      "adresse": "1 rue des Lilas, 00000 Bourg-Nord",
+      "stationnement": "gratuit",
+      "distance_domicile_km_aller": 10,
+      "duree_domicile_min_aller": 20
+    },
+    {
+      "employeur": "Cabinet Vega",
+      "site": "Bourg-Sud",
+      "adresse": "9 avenue du Parc, 00000 Bourg-Sud",
+      "stationnement": "variable, payant ou gratuit selon la place trouvée",
+      "distance_domicile_km_aller": 6,
+      "duree_domicile_min_aller": 12
+    },
+    {
+      "employeur": "Clinique Altair",
+      "site": null,
+      "adresse": "3 place Centrale, 00000 Loin-sur-Route",
+      "stationnement": "payant",
+      "stationnement_eur": 4,
+      "distance_domicile_km_aller": 25,
+      "duree_domicile_min_aller": 35
+    },
+    {
+      "employeur": "Centre Rigel",
+      "site": null,
+      "adresse": "12 chemin de la Nuit, 00000 Veille",
+      "stationnement": "gratuit",
+      "distance_domicile_km_aller": 18,
+      "duree_domicile_min_aller": 30
+    },
+    {
+      "employeur": "Centre Orion",
+      "site": null,
+      "adresse": "5 rue du Salaire, 00000 Mensualis",
+      "stationnement": "gratuit",
+      "distance_domicile_km_aller": 8,
+      "duree_domicile_min_aller": 15
+    }
+  ],
+  "cout_kilometrique": {
+    "consommation_l_100km": 4.5,
+    "prix_litre_eur": 2.0,
+    "cout_par_km_eur": 0.09,
+    "note": "carburant uniquement"
+  },
+  "repas": {
+    "regle": "0 EUR si gamelle apportée, sinon 10 EUR",
+    "montant_eur": 10
+  }
+}

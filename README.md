@@ -14,6 +14,9 @@ clinique.
 - `outils/build_site.py` — régénère la page. Le référentiel ne se modifie que
   par le JSON, jamais dans la page.
 
+- `outils/simulateur.py` — simulateur de vacations : où poser un créneau de
+  plus, ce qu'il rapporte une fois le trajet et le repas déduits, et ce qu'il
+  coûte en temps. Voir `outils/simulateur.md`.
 - `outils/vacations.py` — outil de planning : lit un mois d'agenda et en sort
   les heures, le revenu net projeté et les conflits de créneaux. Voir
   `outils/vacations.md`. Il ne lit **aucune** donnée versionnée ici : la grille
