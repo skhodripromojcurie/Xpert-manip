@@ -437,6 +437,135 @@ class SalarieMensualise(unittest.TestCase):
                                            2026, 9), (None, None))
 
 
+class PerimetreDuMois(unittest.TestCase):
+    """Un rapport mensuel ne parle que de son mois — bugs trouvés à l'usage."""
+
+    GRILLE = {
+        "employeurs": [
+            {"nom": "Fini", "type": "salaire_mensuel", "net_mensuel": 2000,
+             "date_fin": "2026-09-11", "note_rapport": "chiffre à confirmer"},
+            {"nom": "Horaire", "taux_net_heure": 20}],
+        "identification_agenda_google": {
+            "fini": {"methode": "texte", "mot_cle": "Fini",
+                     "duree_par_defaut": "journee"},
+            "horaire": {"methode": "texte", "mot_cle": "Horaire",
+                        "duree_par_defaut": "journee"}},
+    }
+
+    def _ev(self, titre, jour):
+        return v.Evenement("1", titre, datetime(2026, 9, jour),
+                           datetime(2026, 9, jour + 1), True, None, False)
+
+    def test_la_note_ne_suit_pas_un_employeur_absent_du_mois(self):
+        """Le contrat s'arrête le 11/09 : en octobre, sa note n'a plus lieu d'être."""
+        a = v.analyser(self.GRILLE, [], 2026, 9)
+        self.assertTrue(any("chiffre à confirmer" in x for x in a["alertes"]))
+        self.assertNotIn("Fini", v.analyser(self.GRILLE, [], 2026, 10)["par_employeur"])
+        self.assertEqual(v.analyser(self.GRILLE, [], 2026, 10)["alertes"], [])
+
+    def test_les_remarques_d_un_evenement_hors_mois_restent_dehors(self):
+        """Un bloc de septembre ne doit pas commenter le rapport d'octobre."""
+        ev = [self._ev("Horaire", 7)]
+        ev[0].fin = datetime(2026, 9, 10)          # trois jours : ça se signale
+        self.assertTrue(any("couvre 3 jours" in x
+                            for x in v.analyser(self.GRILLE, ev, 2026, 9)["alertes"]))
+        self.assertEqual(v.analyser(self.GRILLE, ev, 2026, 10)["alertes"], [])
+
+    def test_une_vacation_apres_la_fin_du_contrat_est_signalee(self):
+        a = v.analyser(self.GRILLE, [self._ev("Fini", 20)], 2026, 9)
+        self.assertTrue(any("suit la fin annoncée" in x for x in a["alertes"]))
+
+    def test_un_libelle_d_affichage_ne_scinde_pas_l_employeur(self):
+        """Le rattachement se fait sur le nom de l'employeur, pas sur l'affichage."""
+        grille = json.loads(json.dumps(self.GRILLE))
+        grille["identification_agenda_google"]["fini"]["libelle"] = "Contrat fini"
+        a = v.analyser(grille, [self._ev("Fini", 2)], 2026, 9)
+        self.assertEqual(sorted(a["par_employeur"]), ["Fini"])
+        # Une seule ligne, qui porte à la fois les heures et le salaire — et non
+        # deux lignes dont l'une aurait les heures et l'autre l'argent.
+        bloc = a["par_employeur"]["Fini"]
+        self.assertGreater(bloc["heures"], 0)
+        # Contrat arrêté le 11/09 : 9 jours ouvrés sur les 22 de septembre.
+        self.assertEqual(round(bloc["montant"], 2), round(2000 * 9 / 22, 2))
+
+
+class EtSi(unittest.TestCase):
+    """Ce que coûte, et ce que rapporte, une vacation de plus."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.grille = json.loads(
+            (EXEMPLES / "grille.exemple.json").read_text(encoding="utf-8"))
+        cls.evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            cls.grille.get("couleur_agenda_par_defaut"))
+
+    def _sim(self, *textes):
+        return v.simuler(self.grille, self.evenements, 2026, 9,
+                         [v.lire_hypothese(t, 2026) for t in textes],
+                         couleur_agenda=self.grille.get("couleur_agenda_par_defaut"))
+
+    def test_lecture_des_formats(self):
+        for texte, jour in (("24/09 Vega journée", date(2026, 9, 24)),
+                            ("2026-09-24 Vega journée", date(2026, 9, 24)),
+                            ("24-09 Vega journée", date(2026, 9, 24))):
+            self.assertEqual(v.lire_hypothese(texte, 2026).debut.date(), jour)
+        self.assertEqual(v.lire_hypothese("24/09 Vega", 2026).titre, "Vega")
+
+    def test_une_plage_de_jours(self):
+        ev = v.lire_hypothese("24/09 → 26/09 Vega journée", 2026)
+        self.assertEqual(ev.jours, [date(2026, 9, j) for j in (24, 25, 26)])
+
+    def test_hypothese_illisible(self):
+        with self.assertRaises(SystemExit):
+            v.lire_hypothese("demain une vacation", 2026)
+
+    def test_le_gain_d_une_vacation_horaire(self):
+        sim = self._sim("29/09 Vega journée")           # un mardi libre
+        self.assertEqual(len(sim["ajouts"]), 1)
+        self.assertEqual(sim["ajouts"][0]["heures"], 8.0)
+        self.assertEqual(round(sim["net_apres"] - sim["net_avant"], 2), 200.0)
+        self.assertEqual(sim["conflits"], [])
+
+    def test_une_heure_de_plus_chez_un_mensualise_ne_rapporte_rien(self):
+        sim = self._sim("29/09 8-19h")                  # Orion, salarié au mois
+        self.assertEqual(sim["ajouts"][0]["mode"], "mensualisé")
+        self.assertEqual(round(sim["net_apres"] - sim["net_avant"], 2), 0.0)
+        self.assertGreater(sim["heures_apres"], sim["heures_avant"])
+
+    def test_la_bascule_au_dessus_du_plafond_est_annoncee(self):
+        sim = self._sim("11/09 Vega journée")           # semaine 37, déjà à 42 h
+        s37 = next(s for s in sim["semaines"] if s["numero"] == 37)
+        self.assertEqual((s37["avant"], s37["apres"]), (42.0, 50.0))
+        self.assertTrue(s37["bascule"])
+
+    def test_un_jour_deja_pris_ressort_en_conflit(self):
+        sim = self._sim("02/09 Vega journée")           # Vega y travaille déjà
+        # Une journée vaut deux créneaux : le recouvrement se compte deux fois,
+        # matin et après-midi.
+        self.assertEqual(len(sim["conflits"]), 2)
+        self.assertEqual({c["debut"].date() for c in sim["conflits"]},
+                         {date(2026, 9, 2)})
+
+    def test_un_titre_non_rattachable_ne_simule_rien(self):
+        sim = self._sim("29/09 Réunion syndicale")
+        self.assertEqual(sim["ajouts"], [])
+        self.assertEqual(sim["non_reconnus"], ["Réunion syndicale"])
+        self.assertEqual(sim["net_apres"], sim["net_avant"])
+
+    def test_le_mois_de_reference_n_est_pas_modifie(self):
+        """La simulation ne doit rien laisser derrière elle."""
+        avant = v.analyser(self.grille, self.evenements, 2026, 9)
+        self._sim("29/09 Vega journée")
+        apres = v.analyser(self.grille, self.evenements, 2026, 9)
+        self.assertEqual(len(avant["vacations"]), len(apres["vacations"]))
+
+    def test_le_rapport_texte_tient(self):
+        texte = v.rapport_simulation(self._sim("29/09 Vega journée"))
+        self.assertIn("Et si", texte)
+        self.assertIn("200,00 €", texte)
+
+
 class MiseEnPage(unittest.TestCase):
     """La page HTML ne recalcule rien : elle doit dire ce que dit l'analyse."""
 

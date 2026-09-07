@@ -283,6 +283,7 @@ class Regle:
     cle: str
     libelle: str
     methode: str
+    cle_employeur: str = ""   # nom dans « employeurs », ou le libellé à défaut
     mots_cles: list = field(default_factory=list)
     couleurs: dict = field(default_factory=dict)   # couleur -> variante
     employeur: dict = None
@@ -380,6 +381,7 @@ def construire_regles(grille):
             methode=normaliser(bloc.get("methode")) or "texte",
             employeur=emp)
 
+        regle.cle_employeur = (emp or {}).get("nom") or regle.libelle
         regle.mots_cles = _mots_cles(bloc)
         for nom_champ, valeur in bloc.items():
             if nom_champ.startswith("couleur") and isinstance(valeur, str) and valeur:
@@ -701,6 +703,11 @@ def _controler(ev, regle, jours):
         alertes.append(
             f"« {ev.titre} » ({format_jour(jours[0])}) précède le démarrage annoncé "
             f"de {regle.libelle} ({regle.date_debut.isoformat()}).")
+    fin = emp.get("date_fin")
+    if fin and jours[-1] > date.fromisoformat(fin):
+        alertes.append(
+            f"« {ev.titre} » ({format_jour(jours[-1])}) suit la fin annoncée de "
+            f"{regle.libelle} ({fin}).")
     return alertes
 
 
@@ -725,9 +732,8 @@ def analyser(grille, evenements, annee, mois, feries=()):
             autres.append(ev)
             continue
         creneaux, source, alertes_creneau = resoudre_creneaux(ev, regle)
-        alertes += alertes_creneau
         jours = ev.jours
-        alertes += _controler(ev, regle, jours)
+        alertes_controle = _controler(ev, regle, jours)
 
         segments, pause_totale = [], 0.0
         for debut, fin in creneaux:
@@ -763,6 +769,7 @@ def analyser(grille, evenements, annee, mois, feries=()):
                 montant += t * seg["heures"]
                 estime = estime or est
         vacations.append({
+            "alertes": alertes_creneau + alertes_controle,
             "evenement": ev, "regle": regle, "motif": motif, "source": source,
             "creneaux": creneaux, "segments": segments, "jours": jours,
             "heures": sum(s["heures"] for s in segments), "pause": pause_totale,
@@ -787,8 +794,8 @@ def analyser(grille, evenements, annee, mois, feries=()):
                 s["hors_plafond"] += seg["heures"]
                 continue
             s["heures"] += seg["heures"]
-            s["par_employeur"][v["regle"].libelle] = (
-                s["par_employeur"].get(v["regle"].libelle, 0.0) + seg["heures"])
+            s["par_employeur"][v["regle"].cle_employeur] = (
+                s["par_employeur"].get(v["regle"].cle_employeur, 0.0) + seg["heures"])
     for (an, num), s in semaines.items():
         s["debut"] = date.fromisocalendar(an, num, 1)
         s["fin"] = date.fromisocalendar(an, num, 7)
@@ -805,10 +812,12 @@ def analyser(grille, evenements, annee, mois, feries=()):
         v["heures_mois"] = h_mois
         if h_mois <= 0:
             continue
+        alertes += v["alertes"]
         part = h_mois / v["heures"] if v["heures"] else 0.0
-        bloc = par_employeur.setdefault(v["regle"].libelle, {
+        bloc = par_employeur.setdefault(v["regle"].cle_employeur, {
             "heures": 0.0, "montant": 0.0, "vacations": 0, "estime": False,
-            "manque": None, "employeur": v["regle"].employeur})
+            "manque": None, "employeur": v["regle"].employeur,
+            "libelle": v["regle"].libelle})
         bloc["heures"] += h_mois
         bloc["vacations"] += 1
         bloc["estime"] = bloc["estime"] or v["estime"]
@@ -824,15 +833,17 @@ def analyser(grille, evenements, annee, mois, feries=()):
     for emp in grille.get("employeurs", []):
         nom = emp.get("nom", "")
         bloc = par_employeur.get(nom)
-        if emp.get("note_rapport") and (bloc or est_mensualise(emp)):
-            alertes.append(f"{nom} : {emp['note_rapport']}")
         montant, detail = salaire_du_mois(
             emp, annee, mois, bloc["heures"] if bloc else 0.0)
+        if detail is None and bloc is None:
+            continue      # cet employeur ne concerne pas ce mois-ci
+        if emp.get("note_rapport"):
+            alertes.append(f"{nom} : {emp['note_rapport']}")
         if detail is None:
             continue
         bloc = par_employeur.setdefault(nom, {
             "heures": 0.0, "montant": 0.0, "vacations": 0, "estime": False,
-            "manque": None, "employeur": emp, "mensualise": True})
+            "manque": None, "employeur": emp, "libelle": nom, "mensualise": True})
         bloc["mensualise"] = True
         if montant is None:
             bloc["montant"], bloc["manque"] = None, detail["manque"]
@@ -847,7 +858,8 @@ def analyser(grille, evenements, annee, mois, feries=()):
     for v in vacations:
         for seg in v["segments"]:
             jour = par_jour.setdefault(seg["jour"], {})
-            jour[v["regle"].libelle] = jour.get(v["regle"].libelle, 0.0) + seg["heures"]
+            jour[v["regle"].cle_employeur] = (
+                jour.get(v["regle"].cle_employeur, 0.0) + seg["heures"])
 
     return {
         "annee": annee, "mois": mois, "plafond": plafond,
@@ -936,6 +948,141 @@ def chevauchements(vacations, autres):
                     avec_autres.append({"vacation": v, "evenement": ev,
                                         "debut": bas, "fin": haut})
     return {"entre_vacations": entre_vacations, "avec_autres": avec_autres}
+
+
+# --------------------------------------------------------------------------
+# « Et si » — ce que coûte, et ce que rapporte, une vacation de plus
+# --------------------------------------------------------------------------
+
+_HYPOTHESE = re.compile(
+    r"^\s*(?P<jour>\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?)"
+    r"(?:\s*(?:→|->|\.\.)\s*(?P<fin>\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?))?"
+    r"\s+(?P<titre>.+?)\s*$")
+
+
+def lire_hypothese(texte, annee_defaut):
+    """« 24/09 Crystal journée » → un événement d'agenda comme un autre.
+
+    L'événement simulé traverse exactement la même chaîne que les vrais :
+    identification, créneau, tarif. C'est ce qui garantit qu'une simulation dit
+    la même chose que le mois une fois la vacation réellement posée.
+    """
+    m = _HYPOTHESE.match(texte)
+    if not m:
+        raise SystemExit(
+            f"Hypothèse illisible : « {texte} »\n"
+            f"Attendu : « JJ/MM Titre », « JJ/MM → JJ/MM Titre » ou "
+            f"« AAAA-MM-JJ Titre ».")
+
+    def _jour(brut):
+        if "-" in brut and len(brut) == 10:
+            return date.fromisoformat(brut)
+        morceaux = [int(x) for x in re.split(r"[/-]", brut)]
+        annee = morceaux[2] if len(morceaux) > 2 else annee_defaut
+        return date(annee + 2000 if annee < 100 else annee, morceaux[1], morceaux[0])
+
+    debut = _jour(m.group("jour"))
+    fin = _jour(m.group("fin")) if m.group("fin") else debut
+    return Evenement(identifiant=f"hypothese:{texte}", titre=m.group("titre"),
+                     debut=datetime.combine(debut, datetime.min.time()),
+                     fin=datetime.combine(fin + timedelta(days=1), datetime.min.time()),
+                     journee_entiere=True, couleur=None, couleur_explicite=False)
+
+
+def simuler(grille, evenements, annee, mois, hypotheses, feries=(),
+            couleur_agenda=None):
+    """Compare le mois tel quel et le mois augmenté des hypothèses."""
+    for ev in hypotheses:
+        if ev.couleur is None:
+            ev.couleur = normaliser(couleur_agenda) or None
+    avant = analyser(grille, evenements, annee, mois, feries)
+    apres = analyser(grille, list(evenements) + list(hypotheses), annee, mois, feries)
+
+    ajouts = [v for v in apres["vacations"]
+              if v["evenement"].identifiant.startswith("hypothese:")]
+    non_reconnus = [ev.titre for ev in apres["autres"]
+                    if ev.identifiant.startswith("hypothese:")]
+
+    def _total(a):
+        return sum(b["montant"] for b in a["par_employeur"].values()
+                   if b["montant"] is not None)
+
+    semaines = []
+    for cle, s_apres in apres["semaines"].items():
+        s_avant = avant["semaines"].get(cle, {"heures": 0.0, "reste": apres["plafond"],
+                                              "depassement": False})
+        if abs(s_apres["heures"] - s_avant["heures"]) > 1e-9:
+            semaines.append({"annee": cle[0], "numero": cle[1],
+                             "debut": s_apres["debut"], "fin": s_apres["fin"],
+                             "avant": s_avant["heures"], "apres": s_apres["heures"],
+                             "reste": s_apres["reste"],
+                             "bascule": s_apres["depassement"] and not s_avant["depassement"],
+                             "depassement": s_apres["depassement"]})
+
+    connus = {(c["debut"], c["a"]["evenement"].titre, c["b"]["evenement"].titre)
+              for c in avant["chevauchements"]["entre_vacations"]}
+    repos_connus = {(r["fin"], r["debut"]) for r in avant["repos_insuffisants"]}
+    return {
+        "avant": avant, "apres": apres, "ajouts": ajouts,
+        "non_reconnus": non_reconnus,
+        "net_avant": _total(avant), "net_apres": _total(apres),
+        "heures_avant": sum(b["heures"] for b in avant["par_employeur"].values()),
+        "heures_apres": sum(b["heures"] for b in apres["par_employeur"].values()),
+        "semaines": semaines,
+        "conflits": [c for c in apres["chevauchements"]["entre_vacations"]
+                     if (c["debut"], c["a"]["evenement"].titre,
+                         c["b"]["evenement"].titre) not in connus],
+        "repos": [r for r in apres["repos_insuffisants"]
+                  if (r["fin"], r["debut"]) not in repos_connus],
+    }
+
+
+def rapport_simulation(sim):
+    a = sim["apres"]
+    lignes = [_titre("Et si — " + ", ".join(
+        f"« {v['evenement'].titre} » {format_jour(v['jours'][0])}"
+        for v in sim["ajouts"]) or "Et si")]
+
+    for titre in sim["non_reconnus"]:
+        lignes.append(f"  ⚠ « {titre} » n'est rattaché à aucun employeur : "
+                      f"ni mot-clé, ni horaire au titre. Rien n'a été simulé.")
+    for v in sim["ajouts"]:
+        montant = (format_euros(v["montant"]) if v["montant"] is not None
+                   else "aucun euro de plus — employeur mensualisé"
+                   if v["mode"] == "mensualisé" else "non chiffrable")
+        lignes.append(f"  + {v['regle'].libelle} · {format_heures(v['heures'])} "
+                      f"· {montant}")
+        lignes.append(f"    {v['source']}")
+
+    gain = sim["net_apres"] - sim["net_avant"]
+    lignes.append(f"\n  Net du mois   {format_euros(sim['net_avant'])} → "
+                  f"{format_euros(sim['net_apres'])}   "
+                  f"({'+' if gain >= 0 else ''}{format_euros(gain)})")
+    lignes.append(f"  Heures        {format_heures(sim['heures_avant'])} → "
+                  f"{format_heures(sim['heures_apres'])}")
+
+    for s in sim["semaines"]:
+        marque = "  ⚠" if s["depassement"] else "   "
+        etat = (" — fait basculer la semaine au-dessus du plafond" if s["bascule"]
+                else " — déjà au-dessus" if s["depassement"]
+                else f" — il resterait {format_heures(s['reste'])}")
+        lignes.append(f"{marque} S{s['numero']} {s['debut']:%d/%m}–{s['fin']:%d/%m} : "
+                      f"{format_heures(s['avant'])} → {format_heures(s['apres'])}{etat}")
+
+    for c in sim["conflits"]:
+        lignes.append(f"  ⚠ Nouveau chevauchement le {format_jour(c['debut'].date())} "
+                      f"{c['debut']:%H:%M}–{c['fin']:%H:%M} avec "
+                      f"« {c['a']['evenement'].titre} » / "
+                      f"« {c['b']['evenement'].titre} ».")
+    for r in sim["repos"]:
+        lignes.append(f"  ⚠ Nouveau repos trop court : {format_heures(r['heures'])} "
+                      f"entre {format_jour(r['fin'].date())} {r['fin']:%H:%M} et "
+                      f"{format_jour(r['debut'].date())} {r['debut']:%H:%M}.")
+    if not sim["conflits"] and not sim["repos"] and not any(
+            s["bascule"] for s in sim["semaines"]):
+        lignes.append("  Rien ne bascule : ni chevauchement, ni repos trop court, "
+                      "ni plafond franchi.")
+    return "\n".join(lignes) + "\n"
 
 
 # --------------------------------------------------------------------------
@@ -1159,6 +1306,10 @@ def main(argv=None):
                          help="fichier JSON : liste de dates AAAA-MM-JJ")
     parseur.add_argument("--exemple", action="store_true",
                          help="tourne sur les fac-similés de outils/exemples/")
+    parseur.add_argument("--simuler", action="append", default=[], metavar="HYPOTHÈSE",
+                         help="ajoute une vacation fictive et montre ce qu'elle change, "
+                              "sans toucher à l'agenda. Ex : --simuler "
+                              "\"24/09 Crystal journée\". Répétable.")
     parseur.add_argument("--json", action="store_true")
     args = parseur.parse_args(argv)
 
@@ -1184,7 +1335,11 @@ def main(argv=None):
                json.loads(args.feries.read_text(encoding="utf-8"))]
               if args.feries else [])
 
-    analyse = analyser(grille, evenements, annee, mois, feries)
+    hypotheses = [lire_hypothese(x, annee) for x in args.simuler]
+    simulation = (simuler(grille, evenements, annee, mois, hypotheses, feries, couleur)
+                  if hypotheses else None)
+    analyse = simulation["apres"] if simulation else analyser(
+        grille, evenements, annee, mois, feries)
     if not couleur and any(not e.couleur_explicite for e in evenements) and any(
             r.couleurs for r in analyse["regles"]):
         analyse["alertes"].insert(0,
@@ -1193,10 +1348,44 @@ def main(argv=None):
             "(ou « couleur_agenda_par_defaut » dans le JSON), sinon les vacations "
             "identifiées par cette couleur sont invisibles.")
 
+    if evenements:
+        if analyse["fin_lecture"] < analyse["fin_mois"]:
+            analyse["alertes"].insert(0,
+                f"Le dernier événement lu est daté du "
+                f"{analyse['fin_lecture']:%d/%m}, avant la fin du mois "
+                f"({analyse['fin_mois']:%d/%m}) : vérifier que l'export d'agenda "
+                f"couvre bien tout le mois, sinon ce rapport est incomplet.")
+        if analyse["debut_lecture"] > analyse["debut_mois"]:
+            analyse["alertes"].insert(0,
+                f"Le premier événement lu est daté du "
+                f"{analyse['debut_lecture']:%d/%m}, après le début du mois : "
+                f"vérifier que l'export d'agenda remonte assez loin.")
+
     if args.json:
-        print(json.dumps(rapport_json(analyse), ensure_ascii=False, indent=2))
+        sortie = rapport_json(analyse)
+        if simulation:
+            sortie["simulation"] = {
+                "net_avant": round(simulation["net_avant"], 2),
+                "net_apres": round(simulation["net_apres"], 2),
+                "heures_avant": round(simulation["heures_avant"], 2),
+                "heures_apres": round(simulation["heures_apres"], 2),
+                "ajouts": [{"titre": v["evenement"].titre,
+                            "employeur": v["regle"].libelle,
+                            "heures": round(v["heures"], 2),
+                            "montant": None if v["montant"] is None
+                            else round(v["montant"], 2)} for v in simulation["ajouts"]],
+                "non_reconnus": simulation["non_reconnus"],
+                "semaines": [{"numero": s["numero"], "avant": round(s["avant"], 2),
+                              "apres": round(s["apres"], 2), "bascule": s["bascule"]}
+                             for s in simulation["semaines"]],
+                "nouveaux_conflits": len(simulation["conflits"]),
+                "nouveaux_repos_courts": len(simulation["repos"]),
+            }
+        print(json.dumps(sortie, ensure_ascii=False, indent=2))
     else:
         sys.stdout.write(rapport_texte(analyse))
+        if simulation:
+            sys.stdout.write(rapport_simulation(simulation))
 
 
 if __name__ == "__main__":

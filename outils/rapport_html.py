@@ -142,6 +142,33 @@ tfoot td { font-weight:650; border-top:2px solid var(--axis); border-bottom:0; p
 .titre-ev { color:var(--ink-2); }
 ul.pts { margin:0; padding-left:18px; }
 ul.pts li { margin-bottom:9px; }
+details.detail > summary { cursor:pointer; color:var(--ink-2); font-size:.86rem;
+  padding:4px 0; list-style:none; display:flex; align-items:center; gap:7px; }
+details.detail > summary::-webkit-details-marker { display:none; }
+details.detail > summary::before { content:"▸"; color:var(--muted); font-size:.8rem; }
+details.detail[open] > summary::before { content:"▾"; }
+details.detail > summary:hover { color:var(--ink); }
+details.detail > div { margin-top:14px; }
+
+.pts-g { margin-bottom:20px; }
+.pts-g:last-child { margin-bottom:0; }
+.pts-g h3 { font-size:.78rem; margin:0 0 9px; font-weight:650;
+  display:flex; align-items:center; gap:7px; }
+.pts-g h3 b { font-weight:650; font-size:.72rem; padding:1px 7px; border-radius:20px; }
+.g-crit h3 { color:var(--crit); } .g-crit h3 b { background:var(--crit); color:#fff; }
+.g-warn h3 { color:var(--warn-ink); }
+.g-warn h3 b { background:var(--warn); color:#3a2800; }
+.g-info h3 { color:var(--muted); }
+.g-info h3 b { background:var(--grid); color:var(--ink-2); }
+ul.pts li strong { font-weight:650; }
+
+.sim { border:2px solid var(--s1); background:var(--surface); }
+.sim .k { color:var(--s1); }
+.sim-l { display:flex; flex-wrap:wrap; gap:10px 26px; margin:2px 0 16px; }
+.sim-l div { font-size:.86rem; }
+.sim-l b { display:block; font-size:1.25rem; font-weight:650; margin-top:2px; }
+.sim-d { color:var(--muted); font-size:.8rem; }
+
 .rappel { margin-top:40px; padding-top:18px; border-top:1px solid var(--grid);
   color:var(--muted); font-size:.8rem; }
 @media (max-width:620px) {
@@ -253,10 +280,69 @@ def _grille_du_mois(a, couleurs):
     return "".join(cases)
 
 
-def construire(a):
+def _bandeau_simulation(sim):
+    """Ce que change la vacation envisagée, en tête de page : c'est la question
+    qu'on est venu poser, elle ne doit pas se chercher."""
+    gain = sim["net_apres"] - sim["net_avant"]
+    heures = sim["heures_apres"] - sim["heures_avant"]
+    ajouts = ", ".join(f"« {e(x['evenement'].titre)} » "
+                       f"{e(v.format_jour(x['jours'][0]))}" for x in sim["ajouts"])
+    bloc = ['<div class="carte tuile sim">',
+            f'<div class="k">Et si — {ajouts or "hypothèse non rattachée"}</div>',
+            '<div class="sim-l">',
+            f'<div>Net du mois<b>{e(euros(sim["net_apres"]))}</b>'
+            f'<span class="sim-d">{"+" if gain >= 0 else ""}{e(euros(gain))} '
+            f'par rapport à {e(euros(sim["net_avant"]))}</span></div>',
+            f'<div>Heures<b>{e(v.format_heures(sim["heures_apres"]))}</b>'
+            f'<span class="sim-d">+{e(v.format_heures(heures))}</span></div>']
+    for x in sim["ajouts"]:
+        montant = (euros(x["montant"]) if x["montant"] is not None
+                   else "0 €" if x["mode"] == "mensualisé" else "—")
+        bloc.append(f'<div>{e(x["regle"].libelle)}<b>{e(montant)}</b>'
+                    f'<span class="sim-d">{e(v.format_heures(x["heures"]))} · '
+                    f'{"salarié au mois, aucun euro de plus" if x["mode"] == "mensualisé" else e(x["source"])}'
+                    f'</span></div>')
+    bloc.append("</div>")
+
+    points = []
+    for titre in sim["non_reconnus"]:
+        points.append(f"<strong>« {e(titre)} »</strong> n'est rattaché à aucun "
+                      f"employeur : ni mot-clé, ni horaire au titre. Rien n'a été simulé.")
+    for x in sim["semaines"]:
+        etat = ("<strong>fait basculer la semaine au-dessus du plafond</strong>"
+                if x["bascule"] else "déjà au-dessus" if x["depassement"]
+                else f"il resterait {e(v.format_heures(x['reste']))}")
+        points.append(f"S{x['numero']} {x['debut']:%d/%m}–{x['fin']:%d/%m} : "
+                      f"{e(v.format_heures(x['avant']))} → "
+                      f"{e(v.format_heures(x['apres']))} — {etat}.")
+    for c in sim["conflits"]:
+        points.append(f"<strong>Nouveau chevauchement</strong> le "
+                      f"{e(v.format_jour(c['debut'].date()))} de {c['debut']:%H:%M} "
+                      f"à {c['fin']:%H:%M} avec « {e(c['b']['evenement'].titre)} ».")
+    for r in sim["repos"]:
+        points.append(f"<strong>Nouveau repos trop court</strong> : "
+                      f"{e(v.format_heures(r['heures']))} avant "
+                      f"{e(v.format_jour(r['debut'].date()))} {r['debut']:%H:%M}.")
+    if not points:
+        points.append("Rien ne bascule : ni chevauchement, ni repos trop court, "
+                      "ni plafond franchi.")
+    bloc.append("<ul class=pts>" + "".join(f"<li>{x}</li>" for x in points)
+                + "</ul></div>")
+    return "".join(bloc)
+
+
+def construire(a, sim=None):
+    # Une couleur ne se dépense que pour un employeur qui apparaît dans le mois.
+    # Un salarié mensualisé sans créneau touche son salaire sans occuper de case :
+    # lui donner une teinte encombrerait la légende pour rien, et rapprocherait
+    # deux teintes voisines de la palette sans nécessité.
     couleurs = {}
-    for i, nom in enumerate(sorted(a["par_employeur"])):
+    presents = [nom for nom in sorted(a["par_employeur"])
+                if a["par_employeur"][nom]["heures"] > 0]
+    for i, nom in enumerate(presents):
         couleurs[nom] = f"var(--s{i + 1})" if i < SERIES else "var(--axis)"
+    for nom in a["par_employeur"]:
+        couleurs.setdefault(nom, "var(--axis)")
 
     total = sum(b["montant"] for b in a["par_employeur"].values()
                 if b["montant"] is not None)
@@ -277,6 +363,8 @@ def construire(a):
     # --- Les trois chiffres qui décident -----------------------------------
     apres = (f"{euros(total * (1 - a['taux_pas']))} après impôt"
              if a["taux_pas"] is not None else "")
+    if sim:
+        out.append(_bandeau_simulation(sim))
     out.append('<div class="tuiles">')
     out.append(_tuile("Net du mois", euros(total),
                       apres + (" · comprend une estimation" if estime else "")))
@@ -288,17 +376,21 @@ def construire(a):
         (f"au-dessus de {v.format_heures(a['plafond'])} — alerte, pas un blocage"
          if depasse else f"aucune semaine au-dessus de {v.format_heures(a['plafond'])}"),
         alerte=bool(depasse)))
+    if a["repos_insuffisants"]:
+        n = len(a["repos_insuffisants"])
+        out.append(_tuile(
+            "Repos quotidien", f"{n} enchaînement{'s' if n > 1 else ''}",
+            f"sous {v.format_heures(a['repos_minimum'])} entre deux journées",
+            alerte=True))
     out.append("</div>")
 
     # --- Les heures par semaine --------------------------------------------
-    out.append("<h2>Heures par semaine, tous employeurs confondus</h2>")
-    out.append('<div class="carte"><div class="legende">')
-    for nom in sorted(a["par_employeur"]):
-        out.append(f'<span><span class="pastille" style="background:{couleurs[nom]}"></span>'
-                   f'{e(nom)}</span>')
-    out.append("</div>" + _graphique(a, couleurs) + "</div>")
+    legende = "".join(
+        f'<span><span class="pastille" style="background:{couleurs[nom]}"></span>'
+        f'{e(nom)}</span>' for nom in presents)
 
     out.append("<h2>Le mois jour par jour</h2><div class=carte>")
+    out.append(f'<div class="legende">{legende}</div>')
     out.append(_grille_du_mois(a, couleurs))
     out.append('<div class="cal-leg">'
                '<span><i style="border-color:var(--crit)"></i>deux vacations qui '
@@ -307,10 +399,15 @@ def construire(a):
                f'{e(v.format_heures(a["repos_minimum"]))} de repos avant ou après</span>'
                '<span>Une case vide est un jour libre.</span></div></div>')
 
+    out.append("<h2>Charge par semaine</h2>")
+    out.append(f'<div class="carte"><div class="legende">{legende}</div>'
+               + _graphique(a, couleurs) + "</div>")
+
     # --- Le revenu ----------------------------------------------------------
     out.append("<h2>Revenu net par employeur</h2><div class=carte><table>"
                "<thead><tr><th>Employeur</th><th class=n>Heures</th>"
-               "<th class=n>Net</th><th>Base</th></tr></thead><tbody>")
+               "<th class=n>Net</th><th class=n>1 h de plus</th>"
+               "<th>Base</th></tr></thead><tbody>")
     for nom, b in sorted(a["par_employeur"].items()):
         salaire = b.get("salaire")
         if salaire:
@@ -329,11 +426,20 @@ def construire(a):
             base += " · estimation"
         montant = euros(b["montant"]) if b["montant"] is not None else "non chiffrable"
         heures_txt = v.format_heures(b["heures"]) + (" *" if salaire else "")
+        # Ce que vaut une heure de plus : c'est le chiffre qui décide où
+        # accepter un créneau, et il ne se lit pas dans le total.
+        if salaire:
+            marginal = "0 €"
+        else:
+            taux, _, _ = v.taux_net(b["employeur"], "jour")
+            marginal = f"{taux:.2f} €".replace(".", ",") if taux else "—"
         out.append(f"<tr><td><span class=pastille style=background:{couleurs[nom]}></span>"
                    f"{e(nom)}</td><td class=n>{e(heures_txt)}</td>"
-                   f"<td class=n>{e(montant)}</td><td class=petit>{e(base)}</td></tr>")
+                   f"<td class=n>{e(montant)}</td>"
+                   f"<td class=n>{e(marginal)}</td>"
+                   f"<td class=petit>{e(base)}</td></tr>")
     out.append(f"</tbody><tfoot><tr><td>Total</td><td class=n>{e(v.format_heures(heures))}</td>"
-               f"<td class=n>{e(euros(total))}</td><td class=petit>")
+               f"<td class=n>{e(euros(total))}</td><td></td><td class=petit>")
     if a["taux_pas"] is not None:
         out.append(f"{e(euros(total * (1 - a['taux_pas'])))} après prélèvement à la source "
                    f"({a['taux_pas']:.1%})")
@@ -345,7 +451,10 @@ def construire(a):
     out.append("</div>")
 
     # --- Le détail ----------------------------------------------------------
-    out.append("<h2>Détail des créneaux</h2><div class=carte><table>"
+    out.append(f'<h2>Détail des créneaux</h2><div class=carte>'
+               f'<details class="detail"><summary>'
+               f'{len(a["vacations"])} créneaux, jour par jour</summary><div>'
+               "<table>"
                "<thead><tr><th>Date</th><th>Employeur</th><th>Événement</th>"
                "<th class=n>Heures</th><th class=n>Net</th></tr></thead><tbody>")
     for vac in sorted(a["vacations"], key=lambda x: x["evenement"].debut):
@@ -362,33 +471,54 @@ def construire(a):
                    f"<br><span class=petit>{e(detail)}</span></td>"
                    f"<td class=n>{e(v.format_heures(vac['heures']))}</td>"
                    f"<td class=n>{e(montant)}</td></tr>")
-    out.append("</tbody></table></div>")
+    out.append("</tbody></table></div></details></div>")
 
     # --- Ce qui mérite un œil ----------------------------------------------
     ch = a["chevauchements"]
-    points = []
+    # Trois gravités : ce qui est impossible, ce qui est illégal, ce qui est
+    # seulement à vérifier. Tout au même niveau, la liste ne se lisait plus.
+    graves, legaux, infos = [], [], []
     for c in ch["entre_vacations"]:
-        points.append(f"<strong>Conflit</strong> le {e(v.format_jour(c['debut'].date()))} "
-                      f"de {c['debut']:%H:%M} à {c['fin']:%H:%M} : "
-                      f"« {e(c['a']['evenement'].titre)} » et "
-                      f"« {e(c['b']['evenement'].titre)} ».")
-    for s in a["semaines"].values():
-        if s["depassement"]:
-            points.append(f"<strong>{e(v.format_heures(s['heures']))}</strong> du "
-                          f"{s['debut']:%d/%m} au {s['fin']:%d/%m}, au-dessus du plafond de "
+        graves.append(f"<strong>{e(v.format_jour(c['debut'].date()))}</strong> — deux "
+                      f"vacations de {c['debut']:%H:%M} à {c['fin']:%H:%M} : "
+                      f"« {e(c['a']['evenement'].titre)} » ({e(c['a']['regle'].libelle)}) "
+                      f"et « {e(c['b']['evenement'].titre)} » "
+                      f"({e(c['b']['regle'].libelle)}).")
+    for sem in a["semaines"].values():
+        if sem["depassement"]:
+            legaux.append(f"<strong>{e(v.format_heures(sem['heures']))}</strong> du "
+                          f"{sem['debut']:%d/%m} au {sem['fin']:%d/%m} — "
+                          f"{e(v.format_heures(-sem['reste']))} au-dessus du plafond de "
                           f"{e(v.format_heures(a['plafond']))}.")
+    for r in a["repos_insuffisants"]:
+        legaux.append(f"<strong>{e(v.format_heures(r['heures']))} de repos</strong> entre "
+                      f"{e(v.format_jour(r['fin'].date()))} {r['fin']:%H:%M} "
+                      f"({e(', '.join(r['avant']))}) et "
+                      f"{e(v.format_jour(r['debut'].date()))} {r['debut']:%H:%M} "
+                      f"({e(', '.join(r['apres']))}) — le minimum est "
+                      f"{e(v.format_heures(a['repos_minimum']))}.")
     if ch["avec_autres"]:
         par_ev = {}
         for c in ch["avec_autres"]:
             par_ev.setdefault(c["evenement"].titre, []).append(c["debut"].date())
         for titre, jours in par_ev.items():
-            points.append(f"Vacation posée pendant « {e(titre)} » — "
-                          f"{len(set(jours))} jour{'s' if len(set(jours)) > 1 else ''} : "
-                          f"{', '.join(f'{j:%d/%m}' for j in sorted(set(jours)))}.")
-    points += [e(x) for x in dict.fromkeys(a["alertes"])]
-    if points:
-        out.append("<h2>À regarder</h2><div class=carte><ul class=pts>"
-                   + "".join(f"<li>{p}</li>" for p in points) + "</ul></div>")
+            infos.append(f"Vacation posée pendant « {e(titre)} » — "
+                         f"{len(set(jours))} jour{'s' if len(set(jours)) > 1 else ''} : "
+                         f"{', '.join(f'{j:%d/%m}' for j in sorted(set(jours)))}.")
+    infos += [e(x) for x in dict.fromkeys(a["alertes"])]
+
+    groupes = [("g-crit", "Impossible en l'état", graves),
+               ("g-warn", "Au-dessus des limites", legaux),
+               ("g-info", "À vérifier", infos)]
+    if any(p for _, _, p in groupes):
+        out.append("<h2>À regarder</h2><div class=carte>")
+        for classe, titre, points in groupes:
+            if not points:
+                continue
+            out.append(f'<div class="pts-g {classe}"><h3>{e(titre)}'
+                       f'<b>{len(points)}</b></h3><ul class=pts>'
+                       + "".join(f"<li>{p}</li>" for p in points) + "</ul></div>")
+        out.append("</div>")
 
     out.append('<p class="rappel">Les durées par défaut d\'une journée ou d\'une '
                'demi-journée ne figurent pas dans la grille : ce sont des hypothèses, '
@@ -406,6 +536,9 @@ def main(argv=None):
     p.add_argument("--couleur-agenda", default=None)
     p.add_argument("--feries", type=Path, default=None)
     p.add_argument("--exemple", action="store_true")
+    p.add_argument("--simuler", action="append", default=[], metavar="HYPOTHÈSE",
+                   help="ajoute une vacation fictive et montre ce qu'elle change. "
+                        "Ex : --simuler \"24/09 Crystal journée\". Répétable.")
     p.add_argument("--sortie", type=Path, required=True)
     args = p.parse_args(argv)
 
@@ -422,8 +555,11 @@ def main(argv=None):
                json.loads(args.feries.read_text(encoding="utf-8"))] if args.feries else [])
     annee, mois = (int(x) for x in args.mois.split("-"))
 
-    args.sortie.write_text(
-        construire(v.analyser(grille, evenements, annee, mois, feries)), encoding="utf-8")
+    hypotheses = [v.lire_hypothese(x, annee) for x in args.simuler]
+    sim = (v.simuler(grille, evenements, annee, mois, hypotheses, feries, couleur)
+           if hypotheses else None)
+    analyse = sim["apres"] if sim else v.analyser(grille, evenements, annee, mois, feries)
+    args.sortie.write_text(construire(analyse, sim), encoding="utf-8")
     print(f"{args.sortie} écrit.")
 
 

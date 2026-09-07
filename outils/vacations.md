@@ -17,6 +17,8 @@ python3 outils/vacations.py --mois 2026-09 --json     # même chose, exploitable
 python3 outils/tests_vacations.py                     # les contrôles
 
 python3 outils/rapport_html.py --mois 2026-09 --sortie ~/vacations.html
+
+python3 outils/vacations.py --mois 2026-09 --simuler "24/09 Crystal journée"
 ```
 
 `rapport_html.py` met la même analyse en page : un fichier HTML autonome, sans
@@ -220,6 +222,26 @@ l'amplitude d'une journée, ce sont deux journées.
 
 Le rapport donne aussi, semaine par semaine, ce qu'il reste avant le plafond.
 C'est le chiffre à regarder quand on vous propose une vacation de plus.
+
+## « Et si » — une vacation de plus
+
+`--simuler "JJ/MM Titre"` ajoute une vacation fictive et montre ce qu'elle
+change, sans toucher à l'agenda. Répétable ; `--simuler "24/09 → 26/09 Titre"`
+pour un bloc de plusieurs jours.
+
+Le titre est traité comme celui d'un vrai événement : même identification, même
+créneau, même tarif. C'est ce qui garantit qu'une simulation dit la même chose
+que le mois une fois la vacation posée pour de bon. Un titre que rien ne
+rattache à un employeur est signalé, pas deviné.
+
+La réponse tient en quatre points : ce que ça rapporte, ce que ça fait aux
+heures de la semaine, si ça franchit le plafond, et si ça crée un chevauchement
+ou un repos trop court.
+
+**Le chiffre qui surprend le plus** : une heure de plus chez un employeur
+mensualisé ne rapporte rien. La page le met en colonne — « 1 h de plus » — parce
+que c'est ce qui décide où placer un créneau, et que ça ne se lit pas dans le
+total.
 
 ## Ce que le rapport signale
 
