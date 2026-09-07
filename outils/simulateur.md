@@ -62,6 +62,20 @@ un sac à dos sur les semaines.
 - **Un site pour un employeur mensualisé** : son heure marginale vaut zéro, une
   rentabilité horaire n'aurait pas de sens.
 
+## Nommer le site dans le titre
+
+Un employeur à plusieurs sites ne dit pas dans l'agenda lequel : « Crystal
+journée » ne distingue pas Colombes de Bezons, et les trajets n'ont pas le même
+coût. Écrire **« Crystal Colombes journée »** lève le doute — le simulateur lit
+le site dans le titre.
+
+À défaut, il retient le **site le plus proche**, ce qui est une hypothèse basse
+sur le coût, et il le signale. Il ne devine jamais en silence.
+
+Deux noms de site peuvent s'emboîter (« Colombes » est contenu dans « La
+Garenne-Colombes »). L'appariement cherche donc d'abord les mots qui ne
+désignent qu'un seul site — « garenne », « asnières » — avant les mots partagés.
+
 ## Ce qu'il faut savoir lire
 
 Quand aucune distance n'est renseignée, les deux premières optimisations

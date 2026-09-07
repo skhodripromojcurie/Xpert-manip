@@ -316,6 +316,45 @@ def _occupe(creneaux, jour, fenetre):
     return any(min(f, fin) > max(d, debut) for d, f in creneaux)
 
 
+# « sur », « seine », « la »… ne désignent aucun lieu à eux seuls.
+MOTS_DE_LIAISON = {"sur", "sous", "la", "le", "les", "de", "du", "des", "en",
+                   "seine", "saint", "st"}
+
+
+def _jetons_de_site(site):
+    return {m for m in re.split(r"[^a-z0-9]+", v.normaliser(site.site))
+            if m and m not in MOTS_DE_LIAISON}
+
+
+def site_du_titre(titre, sites):
+    """Retrouve le site nommé dans un titre d'agenda — « Crystal Colombes ».
+
+    Deux pièges : « Colombes » est contenu dans « La Garenne-Colombes », et
+    « La Garenne » ne contient pas « Colombes ». On cherche donc d'abord les
+    jetons qui ne désignent qu'un seul site (« garenne », « asnieres »), puis
+    les jetons partagés — auquel cas c'est le site au nom le plus court qui
+    l'emporte, celui dont c'est le nom entier.
+    """
+    plat = v.normaliser(titre)
+    jetons = {s.libelle: _jetons_de_site(s) for s in sites}
+    compte = {}
+    for ensemble in jetons.values():
+        for mot in ensemble:
+            compte[mot] = compte.get(mot, 0) + 1
+
+    for distinctifs in (True, False):
+        trouves = []
+        for site in sites:
+            mots = [m for m in jetons[site.libelle]
+                    if (compte[m] == 1) == distinctifs]
+            for mot in mots:
+                if re.search(rf"(?<![a-z0-9]){re.escape(mot)}(?![a-z0-9])", plat):
+                    trouves.append((len(jetons[site.libelle]), -len(mot), site))
+        if trouves:
+            return min(trouves, key=lambda x: x[:2])[2]
+    return None
+
+
 def sites_par_employeur(trajets):
     par = {}
     for site in trajets.sites:
@@ -330,7 +369,7 @@ def couts_du_planning(analyse, trajets):
     le coût est alors donné en fourchette, et le fait est signalé.
     """
     par_employeur = sites_par_employeur(trajets)
-    total, trajet_h, details, inconnus = 0.0, 0.0, {}, []
+    total, trajet_h, details, inconnus, imprecis = 0.0, 0.0, {}, [], []
     for vac in analyse["vacations"]:
         if not vac["heures_mois"]:
             continue
@@ -345,10 +384,15 @@ def couts_du_planning(analyse, trajets):
         if not chiffrables:
             inconnus.append(candidats[0].libelle)
             continue
+        # Le titre décide quand il nomme le site. Sinon on prend le plus proche,
+        # ce qui est une hypothèse basse — et qui se dit.
+        nomme = site_du_titre(vac["evenement"].titre, chiffrables)
+        if nomme is None and len(candidats) > 1:
+            imprecis.append(vac["evenement"].titre)
         for jour in vac["jours"]:
             if not (analyse["debut_mois"] <= jour <= analyse["fin_mois"]):
                 continue
-            site = min(chiffrables, key=lambda s: s.km_aller)
+            site = nomme or min(chiffrables, key=lambda s: s.km_aller)
             cout = trajets.carburant(site) + (site.stationnement_eur or 0.0)
             total += cout
             if site.heures_trajet:
@@ -357,7 +401,8 @@ def couts_du_planning(analyse, trajets):
             bloc["jours"] += 1
             bloc["cout"] += cout
     return {"total": total, "heures_trajet": trajet_h, "par_site": details,
-            "sites_inconnus": sorted(set(inconnus))}
+            "sites_inconnus": sorted(set(inconnus)),
+            "titres_sans_site": sorted(set(imprecis))}
 
 
 # --------------------------------------------------------------------------
@@ -611,6 +656,7 @@ def evaluer(grille, evenements, trajets, annee, mois, seances=(), feries=()):
         "par_heure_travaillee": (net - couts["total"] - repas) / heures if heures else 0.0,
         "par_heure_passee": (net - couts["total"] - repas) / temps if temps else 0.0,
         "couts_par_site": couts["par_site"], "sites_inconnus": couts["sites_inconnus"],
+        "titres_sans_site": couts["titres_sans_site"],
         "depassements": [s for s in analyse["semaines"].values() if s["depassement"]],
         "repos": analyse["repos_insuffisants"],
         "conflits": analyse["chevauchements"]["entre_vacations"],
@@ -747,6 +793,15 @@ def rapport_scenarios(resultat, plafond):
             "pour Crystal est arbitraire — c'est le premier de la\n    liste, pas "
             "le plus proche. Renseigner « distance_domicile_km_aller » et\n"
             "    « duree_domicile_min_aller » dans trajets.json les départagera.")
+    sans_site = resultat["nu"]["titres_sans_site"]
+    if sans_site:
+        lignes.append(
+            f"  ⚠ {len(sans_site)} titre(s) d'agenda ne nomment pas leur site alors "
+            f"que l'employeur en a plusieurs :\n    "
+            + ", ".join(f"« {t} »" for t in sans_site)
+            + "\n    Le site le plus proche a été retenu — hypothèse basse sur le "
+              "coût. Écrire\n    « Crystal Colombes journée » plutôt que "
+              "« Crystal journée » lèvera le doute.")
     for jour, titre in sorted(resultat["jours_douteux"].items()):
         lignes.append(f"  ⚠ {v.format_jour(jour)} écarté des jours libres : "
                       f"« {titre} » ressemble à un créneau dont le titre est mal "

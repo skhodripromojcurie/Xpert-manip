@@ -678,6 +678,44 @@ class Simulateur(unittest.TestCase):
             simulateur._regle_du_site(site, regles).cle_employeur,
             "Groupe Resonance Imagerie")
 
+    def test_le_site_se_lit_dans_le_titre(self):
+        """« Crystal Colombes » doit désigner Colombes, pas un site au hasard."""
+        sites = [simulateur.Site("C", nom, "", "gratuit", 1, 1) for nom in
+                 ("Asnières-sur-Seine", "Colombes", "La Garenne-Colombes", "Bezons")]
+        for titre, attendu in (("Crystal Colombes journée", "Colombes"),
+                               ("Crystal Asnières aprèm", "Asnières-sur-Seine"),
+                               ("Crystal Bezons matin", "Bezons"),
+                               ("Crystal La Garenne journée", "La Garenne-Colombes")):
+            self.assertEqual(simulateur.site_du_titre(titre, sites).site, attendu, titre)
+
+    def test_un_nom_de_site_contenu_dans_un_autre(self):
+        """« Colombes » est dans « La Garenne-Colombes » : le jeton propre tranche."""
+        sites = [simulateur.Site("C", nom, "", "gratuit", 1, 1)
+                 for nom in ("Colombes", "La Garenne-Colombes")]
+        self.assertEqual(
+            simulateur.site_du_titre("Crystal Garenne-Colombes", sites).site,
+            "La Garenne-Colombes")
+        self.assertEqual(simulateur.site_du_titre("Crystal Colombes", sites).site,
+                         "Colombes")
+
+    def test_un_titre_sans_site_ne_devine_pas(self):
+        sites = [simulateur.Site("C", nom, "", "gratuit", 1, 1)
+                 for nom in ("Colombes", "Bezons")]
+        self.assertIsNone(simulateur.site_du_titre("Crystal journée", sites))
+
+    def test_un_titre_sans_site_est_signale(self):
+        """L'employeur a plusieurs sites : le silence du titre doit se voir."""
+        grille = json.loads(json.dumps(self.grille))
+        ev = [v.Evenement("1", "Vega journée", datetime(2026, 9, 2),
+                          datetime(2026, 9, 3), True, None, False)]
+        r = simulateur.evaluer(grille, ev, self.trajets, 2026, 9)
+        self.assertEqual(r["titres_sans_site"], ["Vega journée"])
+        # Nommé, il ne l'est plus.
+        ev[0].titre = "Vega Bourg-Nord journée"
+        self.assertEqual(
+            simulateur.evaluer(grille, ev, self.trajets, 2026, 9)["titres_sans_site"],
+            [])
+
     def test_rentabilite_classee_et_separee(self):
         surs, incertains = simulateur.rentabilite(self.grille, self.trajets, 2026, 9)
         # Le site au stationnement variable est mis à part, pas noyé dans le tri.
