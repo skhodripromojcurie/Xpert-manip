@@ -147,6 +147,19 @@ class SurLesExemples(unittest.TestCase):
             "Groupe Sirius astreinte": 400.0,   # forfait du bloc, pas par jour
         })
 
+    def test_capacite_restante(self):
+        s38 = self.a["semaines"][(2026, 38)]
+        self.assertEqual(s38["heures"], 51.0)
+        self.assertEqual(s38["reste"], -3.0)      # trois heures au-dessus
+        self.assertEqual(self.a["semaines"][(2026, 36)]["reste"], 32.0)
+
+    def test_agregat_par_jour(self):
+        """La grille du mois se lit sur cet agrégat."""
+        self.assertEqual(self.a["par_jour"][date(2026, 9, 2)], {"Cabinet Vega": 8.0})
+        self.assertEqual(self.a["par_jour"][date(2026, 9, 10)],
+                         {"Cabinet Vega": 8.0, "Clinique Altair": 4.0})
+        self.assertNotIn(date(2026, 9, 13), self.a["par_jour"])   # un jour libre
+
     def test_plafond_hebdomadaire(self):
         semaines = {num: round(s["heures"], 2)
                     for (_, num), s in self.a["semaines"].items()}
@@ -329,6 +342,51 @@ class DureeAmbigueOuContrainte(unittest.TestCase):
     def test_un_titre_explicite_prime_sur_la_contrainte(self):
         a = self._analyser("X journée", date(2026, 9, 12), self.EMP)
         self.assertEqual(a["vacations"][0]["heures"], 8.0)
+
+
+class ReposQuotidien(unittest.TestCase):
+    """Onze heures entre deux journées : la règle que le cumul casse en premier."""
+
+    def _vacations(self, *creneaux):
+        return [{"creneaux": [(datetime(*d), datetime(*f))],
+                 "regle": type("R", (), {"libelle": nom})()}
+                for nom, d, f in creneaux]
+
+    def test_une_pause_dejeuner_n_est_pas_un_repos(self):
+        """Sinon chaque journée coupée passerait pour un repos manquant."""
+        vac = self._vacations(("X", (2026, 9, 2, 8, 30), (2026, 9, 2, 12, 30)),
+                              ("X", (2026, 9, 2, 13, 30), (2026, 9, 2, 18, 30)))
+        self.assertEqual(len(v.periodes_de_travail(vac)), 1)
+        self.assertEqual(v.repos_insuffisants(vac), [])
+
+    def test_une_nuit_puis_un_matin(self):
+        vac = self._vacations(("Hopital", (2026, 9, 2, 21, 0), (2026, 9, 3, 7, 0)),
+                              ("Cabinet", (2026, 9, 3, 8, 30), (2026, 9, 3, 12, 30)))
+        manques = v.repos_insuffisants(vac)
+        self.assertEqual(len(manques), 1)
+        self.assertEqual(manques[0]["heures"], 1.5)
+        self.assertEqual(manques[0]["avant"], ["Hopital"])
+        self.assertEqual(manques[0]["apres"], ["Cabinet"])
+
+    def test_un_repos_suffisant_ne_dit_rien(self):
+        vac = self._vacations(("X", (2026, 9, 2, 8, 0), (2026, 9, 2, 18, 0)),
+                              ("X", (2026, 9, 3, 8, 0), (2026, 9, 3, 18, 0)))
+        self.assertEqual(v.repos_insuffisants(vac), [])
+
+    def test_l_amplitude_distingue_la_pause_du_repos(self):
+        """8h30-12h30 puis 13h30-18h30 : une journée. 21h-7h puis 8h30 : deux."""
+        journee = self._vacations(("X", (2026, 9, 2, 8, 30), (2026, 9, 2, 12, 30)),
+                                  ("X", (2026, 9, 2, 13, 30), (2026, 9, 2, 18, 30)))
+        self.assertEqual(len(v.periodes_de_travail(journee)), 1)   # amplitude 10 h
+        nuit = self._vacations(("X", (2026, 9, 2, 21, 0), (2026, 9, 3, 7, 0)),
+                               ("X", (2026, 9, 3, 8, 30), (2026, 9, 3, 12, 30)))
+        self.assertEqual(len(v.periodes_de_travail(nuit)), 2)      # amplitude 15h30
+
+    def test_le_minimum_est_reglable(self):
+        vac = self._vacations(("X", (2026, 9, 2, 8, 0), (2026, 9, 2, 20, 0)),
+                              ("X", (2026, 9, 3, 8, 0), (2026, 9, 3, 12, 0)))
+        self.assertEqual(v.repos_insuffisants(vac, minimum=11.0), [])
+        self.assertEqual(len(v.repos_insuffisants(vac, minimum=13.0)), 1)
 
 
 class SalarieMensualise(unittest.TestCase):

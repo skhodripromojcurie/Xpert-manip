@@ -62,6 +62,18 @@ COULEURS_AGENDA = {
 }
 
 PLAFOND_DEFAUT = 48.0
+# Onze heures consécutives entre deux journées de travail (art. L3131-1). C'est
+# la règle que le cumul d'employeurs casse en premier, bien avant le plafond
+# hebdomadaire : personne ne totalise le repos entre une nuit finie à 7 h et une
+# vacation qui reprend à 8 h 30.
+REPOS_DEFAUT = 11.0
+# En deçà, une coupure est une pause dans la journée, pas un repos. Au-delà,
+# c'est une vraie interruption entre deux périodes de travail.
+PAUSE_MAXIMALE_DEFAUT = 4.0
+# Amplitude maximale d'une journée de travail, du premier début à la dernière
+# fin. Sans elle, une nuit finie à 7 h suivie d'une vacation à 8 h 30 passerait
+# pour une seule journée coupée d'une pause — au lieu d'un repos de 1 h 30.
+AMPLITUDE_MAXIMALE_DEFAUT = 13.0
 PLAGE_NUIT_DEFAUT = "21h-7h"
 
 # Ce que vaut « une journée » ou « un après-midi » n'est écrit nulle part dans
@@ -695,8 +707,12 @@ def _controler(ev, regle, jours):
 def analyser(grille, evenements, annee, mois, feries=()):
     regles = construire_regles(grille)
     plage_nuit = lire_plage(grille.get("plage_nuit") or PLAGE_NUIT_DEFAUT)[0]
-    plafond = float((grille.get("contrainte_legale") or {}).get(
-        "plafond_hebdomadaire_heures", PLAFOND_DEFAUT))
+    legal = grille.get("contrainte_legale") or {}
+    plafond = float(legal.get("plafond_hebdomadaire_heures", PLAFOND_DEFAUT))
+    repos_mini = float(legal.get("repos_quotidien_minimum_heures", REPOS_DEFAUT))
+    pause_maxi = float(legal.get("pause_maximale_heures", PAUSE_MAXIMALE_DEFAUT))
+    amplitude_maxi = float(legal.get("amplitude_maximale_heures",
+                                     AMPLITUDE_MAXIMALE_DEFAUT))
     feries = set(feries)
 
     alertes = [a for r in regles for a in r.alertes]
@@ -779,6 +795,7 @@ def analyser(grille, evenements, annee, mois, feries=()):
         s["dans_le_mois"] = not (s["fin"] < debut_mois or s["debut"] > fin_mois)
         s["complete"] = s["debut"] >= debut_mois and s["fin"] <= fin_mois
         s["depassement"] = s["heures"] > plafond
+        s["reste"] = plafond - s["heures"]
 
     # Revenu du mois : au prorata des heures tombant dans le mois, pour qu'un
     # bloc à cheval sur deux mois ne soit pas compté deux fois.
@@ -825,8 +842,19 @@ def analyser(grille, evenements, annee, mois, feries=()):
         bloc["montant"], bloc["estime"] = montant, detail["estime"]
         bloc["salaire"] = detail
 
+    # Ce qui se passe jour par jour : la grille du mois se lit là-dessus.
+    par_jour = {}
+    for v in vacations:
+        for seg in v["segments"]:
+            jour = par_jour.setdefault(seg["jour"], {})
+            jour[v["regle"].libelle] = jour.get(v["regle"].libelle, 0.0) + seg["heures"]
+
     return {
         "annee": annee, "mois": mois, "plafond": plafond,
+        "repos_minimum": repos_mini,
+        "repos_insuffisants": repos_insuffisants(vacations, repos_mini, pause_maxi,
+                                                amplitude_maxi),
+        "par_jour": par_jour,
         "taux_pas": (float(grille["taux_prelevement_source"])
                      if grille.get("taux_prelevement_source") is not None else None),
         "regles": regles, "vacations": vacations, "autres": autres,
@@ -839,6 +867,50 @@ def analyser(grille, evenements, annee, mois, feries=()):
         "fin_lecture": max(((e.fin - timedelta(seconds=1)).date() for e in evenements),
                            default=fin_mois),
     }
+
+
+def periodes_de_travail(vacations, pause_maximale=PAUSE_MAXIMALE_DEFAUT,
+                        amplitude_maximale=AMPLITUDE_MAXIMALE_DEFAUT):
+    """Fusionne les créneaux qu'une simple pause sépare.
+
+    Une journée coupée par le déjeuner reste une journée : sans cette fusion,
+    chaque pause déjeuner passerait pour un repos quotidien manquant. Mais la
+    seule taille de la coupure ne suffit pas à décider — après une nuit de dix
+    heures, une heure et demie n'est pas une pause, c'est un repos trop court.
+    D'où la seconde condition : au-delà de l'amplitude d'une journée de travail,
+    on a affaire à deux journées, pas à une seule entrecoupée.
+    """
+    plats = sorted(((c[0], c[1], v) for v in vacations for c in v["creneaux"]),
+                   key=lambda x: (x[0], x[1]))
+    periodes = []
+    for debut, fin, vac in plats:
+        prolonge = (periodes
+                    and debut - periodes[-1]["fin"] <= timedelta(hours=pause_maximale)
+                    and (max(fin, periodes[-1]["fin"]) - periodes[-1]["debut"]
+                         <= timedelta(hours=amplitude_maximale)))
+        if prolonge:
+            periodes[-1]["fin"] = max(periodes[-1]["fin"], fin)
+            periodes[-1]["employeurs"].add(vac["regle"].libelle)
+        else:
+            periodes.append({"debut": debut, "fin": fin,
+                             "employeurs": {vac["regle"].libelle}})
+    return periodes
+
+
+def repos_insuffisants(vacations, minimum=REPOS_DEFAUT,
+                       pause_maximale=PAUSE_MAXIMALE_DEFAUT,
+                       amplitude_maximale=AMPLITUDE_MAXIMALE_DEFAUT):
+    """Les enchaînements qui ne laissent pas `minimum` heures de repos."""
+    manques = []
+    periodes = periodes_de_travail(vacations, pause_maximale, amplitude_maximale)
+    for avant, apres in zip(periodes, periodes[1:]):
+        ecart = heures(avant["fin"], apres["debut"])
+        if 0 <= ecart < minimum:
+            manques.append({"fin": avant["fin"], "debut": apres["debut"],
+                            "heures": ecart,
+                            "avant": sorted(avant["employeurs"]),
+                            "apres": sorted(apres["employeurs"])})
+    return manques
 
 
 def chevauchements(vacations, autres):
@@ -905,9 +977,12 @@ def rapport_texte(a):
         bord = "" if s["complete"] else "   (semaine à cheval sur le mois voisin)"
         detail = ", ".join(f"{nom} {format_heures(h)}"
                            for nom, h in sorted(s["par_employeur"].items()))
+        reste = (f"   reste {format_heures(s['reste'])}" if s["reste"] > 0
+                 else "   à la limite exacte" if s["reste"] == 0
+                 else f"   {format_heures(-s['reste'])} au-dessus")
         lignes.append(f"{marque} S{num} {s['debut'].strftime('%d/%m')}–"
                       f"{s['fin'].strftime('%d/%m')} : "
-                      f"{format_heures(s['heures']):>9}{bord}")
+                      f"{format_heures(s['heures']):>9}{reste}{bord}")
         if detail:
             lignes.append(f"      {detail}")
         if s["hors_plafond"]:
@@ -980,6 +1055,17 @@ def rapport_texte(a):
             lignes.append(f"    · « {titre} » — {len(jours)} jour"
                           f"{'s' if len(jours) > 1 else ''} : {dates}")
 
+    if a["repos_insuffisants"]:
+        lignes.append(_titre(f"Repos quotidien inférieur à "
+                             f"{format_heures(a['repos_minimum'])}"))
+        for r in a["repos_insuffisants"]:
+            lignes.append(
+                f"  ⚠ {format_heures(r['heures'])} entre "
+                f"{format_jour(r['fin'].date())} {r['fin']:%H:%M} "
+                f"({', '.join(r['avant'])}) et "
+                f"{format_jour(r['debut'].date())} {r['debut']:%H:%M} "
+                f"({', '.join(r['apres'])}).")
+
     if a["alertes"]:
         lignes.append(_titre("À confirmer"))
         for texte in dict.fromkeys(a["alertes"]):
@@ -1022,6 +1108,7 @@ def rapport_json(a):
             "heures": round(s["heures"], 2),
             "par_employeur": {k: round(h, 2) for k, h in s["par_employeur"].items()},
             "heures_hors_plafond": round(s["hors_plafond"], 2),
+            "heures_restantes": round(s["reste"], 2),
             "depassement_plafond": s["depassement"],
             "semaine_complete_dans_le_mois": s["complete"],
         } for (an, num), s in a["semaines"].items() if s["dans_le_mois"]],
@@ -1046,6 +1133,11 @@ def rapport_json(a):
                 "evenement": c["evenement"].titre,
             } for c in a["chevauchements"]["avec_autres"]],
         },
+        "repos_insuffisants": [{
+            "fin": r["fin"].isoformat(), "debut": r["debut"].isoformat(),
+            "heures": round(r["heures"], 2),
+            "avant": r["avant"], "apres": r["apres"],
+        } for r in a["repos_insuffisants"]],
         "evenements_non_reconnus": [e.titre for e in a["autres"]],
         "alertes": list(dict.fromkeys(a["alertes"])),
     }

@@ -16,7 +16,7 @@ diverger.
 import argparse
 import html
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import vacations as v
@@ -31,21 +31,21 @@ STYLE = """
 :root {
   --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e;
   --muted:#898781; --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
-  --warn:#fab219; --warn-ink:#8a5d00; --warn-bg:#fdf6e6;
+  --warn:#fab219; --warn-ink:#8a5d00; --warn-bg:#fdf6e6; --crit:#d03b3b;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
   --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --plane:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink-2:#c3c2b7;
   --muted:#898781; --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
-  --warn:#fab219; --warn-ink:#fab219; --warn-bg:#2a2410;
+  --warn:#fab219; --warn-ink:#fab219; --warn-bg:#2a2410; --crit:#d03b3b;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
   --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
 } }
 :root[data-theme="dark"] {
   --plane:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink-2:#c3c2b7;
   --muted:#898781; --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
-  --warn:#fab219; --warn-ink:#fab219; --warn-bg:#2a2410;
+  --warn:#fab219; --warn-ink:#fab219; --warn-bg:#2a2410; --crit:#d03b3b;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
   --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
 }
@@ -93,6 +93,40 @@ h2 { font-size:.82rem; text-transform:uppercase; letter-spacing:.07em;
   padding-top:5px; margin-left:124px; margin-right:88px; font-size:.72rem; color:var(--muted);
   font-variant-numeric:tabular-nums; }
 .depasse .sem, .depasse .tot { color:var(--warn-ink); font-weight:650; }
+
+.cal { display:grid; grid-template-columns:repeat(7,1fr) 84px; gap:3px; }
+.cal-t { font-size:.7rem; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--muted); padding:0 0 4px 3px; font-weight:600; }
+.cal-j { border:1px solid var(--grid); border-radius:7px; padding:5px 6px 6px;
+  min-height:62px; background:var(--surface); }
+.cal-j.hors { opacity:.38; }
+.cal-j.repos { border-color:var(--warn); }
+.cal-j.conflit { border-color:var(--crit); border-width:2px; padding:4px 5px 5px; }
+.cal-j .num { font-size:.72rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+.cal-j .jt { float:right; font-size:.72rem; font-weight:650;
+  font-variant-numeric:tabular-nums; }
+.puces { display:flex; flex-wrap:wrap; gap:2px; margin-top:5px; }
+.puce { position:relative; font-size:.66rem; color:#fff; font-weight:600;
+  border-radius:3px; padding:1px 4px; line-height:1.5; }
+.puce:hover::after { content:attr(data-tip); position:absolute; left:0;
+  bottom:calc(100% + 5px); background:var(--ink); color:var(--surface);
+  padding:4px 7px; border-radius:5px; font-size:.72rem; font-weight:500;
+  white-space:nowrap; z-index:6; }
+.cal-s { border-radius:7px; padding:6px; display:flex; flex-direction:column;
+  justify-content:center; align-items:flex-end; background:var(--plane);
+  font-variant-numeric:tabular-nums; }
+.cal-s b { font-size:.86rem; }
+.cal-s span { font-size:.7rem; color:var(--muted); }
+.cal-s.depasse { background:var(--warn-bg); }
+.cal-s.depasse b, .cal-s.depasse span { color:var(--warn-ink); }
+.cal-s.limite b { color:var(--warn-ink); }
+.cal-leg { display:flex; flex-wrap:wrap; gap:14px; margin-top:14px;
+  font-size:.78rem; color:var(--muted); }
+.cal-leg i { display:inline-block; width:10px; height:10px; border-radius:3px;
+  border:2px solid; vertical-align:-1px; margin-right:5px; font-style:normal; }
+@media (max-width:620px) { .cal { grid-template-columns:repeat(7,1fr); }
+  .cal-t:last-child, .cal-s { display:none; }
+  .cal-j { min-height:46px; padding:3px 4px; } .puce { font-size:.6rem; } }
 
 table { width:100%; border-collapse:collapse; font-size:.88rem; }
 th { text-align:left; font-weight:600; color:var(--muted); font-size:.76rem;
@@ -163,6 +197,62 @@ def _graphique(a, couleurs):
             f'<div class="axe"><span>0 h</span><span>{e(v.format_heures(haut))}</span></div></div>')
 
 
+def _grille_du_mois(a, couleurs):
+    """Le mois en cases : ce que le graphe hebdomadaire ne montre pas, c'est
+    quels jours sont libres — et c'est la question qu'on se pose quand on
+    accepte, ou non, une vacation de plus."""
+    premier, dernier = a["debut_mois"], a["fin_mois"]
+    depart = premier - timedelta(days=premier.weekday())
+    arrivee = dernier + timedelta(days=6 - dernier.weekday())
+    repos = {r["debut"].date() for r in a["repos_insuffisants"]}
+    repos |= {r["fin"].date() for r in a["repos_insuffisants"]}
+    conflits = {c["debut"].date() for c in a["chevauchements"]["entre_vacations"]}
+
+    cases = ['<div class="cal">']
+    for nom in ("lun", "mar", "mer", "jeu", "ven", "sam", "dim"):
+        cases.append(f'<div class="cal-t">{nom}</div>')
+    cases.append('<div class="cal-t">semaine</div>')
+
+    jour = depart
+    while jour <= arrivee:
+        for _ in range(7):
+            travail = a["par_jour"].get(jour, {})
+            classes = ["cal-j"]
+            if not (premier <= jour <= dernier):
+                classes.append("hors")
+            if jour in conflits:
+                classes.append("conflit")
+            elif jour in repos:
+                classes.append("repos")
+            puces = "".join(
+                f'<span class="puce" style="background:{couleurs.get(nom, "var(--axis)")}"'
+                f' data-tip="{e(nom)} · {e(v.format_heures(h))}">'
+                f'{e(v.format_heures(h))}</span>'
+                for nom, h in sorted(travail.items(), key=lambda kv: -kv[1]))
+            total = sum(travail.values())
+            cases.append(f'<div class="{" ".join(classes)}">'
+                         f'<span class="num">{jour.day}</span>'
+                         f'{f"<span class=jt>{e(v.format_heures(total))}</span>" if travail else ""}'
+                         f'<div class="puces">{puces}</div></div>')
+            jour += timedelta(days=1)
+        # Une semaine sans vacation n'a pas d'entrée dans l'analyse : elle vaut
+        # zéro heure et tout le plafond disponible — l'information qu'on cherche
+        # quand on se demande où caser une vacation de plus.
+        semaine = a["semaines"].get((jour - timedelta(days=7)).isocalendar()[:2],
+                                    {"heures": 0.0, "reste": a["plafond"],
+                                     "depassement": False})
+        etat = ("depasse" if semaine["depassement"]
+                else "limite" if semaine["reste"] == 0 else "")
+        reste = (f"reste {v.format_heures(semaine['reste'])}" if semaine["reste"] > 0
+                 else "à la limite" if semaine["reste"] == 0
+                 else f"+{v.format_heures(-semaine['reste'])}")
+        cases.append(f'<div class="cal-s {etat}">'
+                     f'<b>{e(v.format_heures(semaine["heures"]))}</b>'
+                     f'<span>{e(reste)}</span></div>')
+    cases.append("</div>")
+    return "".join(cases)
+
+
 def construire(a):
     couleurs = {}
     for i, nom in enumerate(sorted(a["par_employeur"])):
@@ -207,6 +297,15 @@ def construire(a):
         out.append(f'<span><span class="pastille" style="background:{couleurs[nom]}"></span>'
                    f'{e(nom)}</span>')
     out.append("</div>" + _graphique(a, couleurs) + "</div>")
+
+    out.append("<h2>Le mois jour par jour</h2><div class=carte>")
+    out.append(_grille_du_mois(a, couleurs))
+    out.append('<div class="cal-leg">'
+               '<span><i style="border-color:var(--crit)"></i>deux vacations qui '
+               'se chevauchent</span>'
+               f'<span><i style="border-color:var(--warn)"></i>moins de '
+               f'{e(v.format_heures(a["repos_minimum"]))} de repos avant ou après</span>'
+               '<span>Une case vide est un jour libre.</span></div></div>')
 
     # --- Le revenu ----------------------------------------------------------
     out.append("<h2>Revenu net par employeur</h2><div class=carte><table>"

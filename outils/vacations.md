@@ -196,6 +196,31 @@ Un employeur présent dans l'agenda mais **absent de `employeurs`** voit ses
 heures comptées et son revenu déclaré non chiffrable. C'est volontaire : mieux
 vaut un trou visible qu'un total faux.
 
+## Les contrôles horaires
+
+Deux règles, toutes deux en alerte, aucune bloquante. Elles se règlent dans
+`contrainte_legale` :
+
+| Clé | Défaut | Ce qu'elle contrôle |
+|---|---|---|
+| `plafond_hebdomadaire_heures` | 48 | le total d'une semaine ISO, tous employeurs confondus |
+| `repos_quotidien_minimum_heures` | 11 | l'écart entre deux journées de travail |
+| `pause_maximale_heures` | 4 | au-delà, une coupure n'est plus une pause |
+| `amplitude_maximale_heures` | 13 | au-delà, ce sont deux journées, pas une |
+
+Le repos quotidien est la règle que le cumul d'employeurs casse en premier —
+bien avant le plafond hebdomadaire. Une nuit finie à 7 h et une vacation qui
+reprend à 8 h 30 laissent une heure et demie, pas onze.
+
+Pour la contrôler il faut savoir ce qu'est *une* journée de travail. Une coupure
+courte est une pause : 8h30-12h30 puis 13h30-18h30 font une journée, pas deux.
+Mais la taille de la coupure ne suffit pas — après une nuit de dix heures, une
+heure et demie n'est pas une pause. La seconde condition tranche : au-delà de
+l'amplitude d'une journée, ce sont deux journées.
+
+Le rapport donne aussi, semaine par semaine, ce qu'il reste avant le plafond.
+C'est le chiffre à regarder quand on vous propose une vacation de plus.
+
 ## Ce que le rapport signale
 
 Rien de tout cela n'est bloquant :
@@ -203,6 +228,7 @@ Rien de tout cela n'est bloquant :
 - semaine au-dessus du plafond, tous employeurs confondus — les heures
   d'astreinte en sont exclues (disponibilité, pas travail effectif ; renversable
   par `"compte_dans_plafond": true`) ;
+- repos quotidien trop court entre deux journées ;
 - deux vacations qui se recouvrent, avec la tranche exacte ;
 - une vacation posée pendant un autre événement de l'agenda (congés, rendez-vous) ;
 - un employeur au statut non actif, un jour hors de ses `jours_possibles`, une
