@@ -593,6 +593,24 @@ class MiseEnPage(unittest.TestCase):
         self.assertIn("2 552,73 €", page)          # Orion, mensualisé
         self.assertIn("51 h", page)                # la semaine hors plafond
 
+    def test_la_page_reunit_les_deux_outils(self):
+        """Une seule page : synthèse du mois, rentabilité et scénarios."""
+        grille = json.loads(
+            (EXEMPLES / "grille.exemple.json").read_text(encoding="utf-8"))
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            grille.get("couleur_agenda_par_defaut"))
+        trajets = simulateur.charger_trajets(EXEMPLES / "trajets.exemple.json")
+        page = rapport_html.construire(
+            v.analyser(grille, evenements, 2026, 9),
+            simulateur.scenarios(grille, evenements, trajets, 2026, 9, cible=5000),
+            simulateur.rentabilite(grille, trajets, 2026, 9))
+        for ancre in ("id=mois", "id=semaine", "id=revenu", "id=rentabilite",
+                      "id=scenarios", "id=regarder", "id=detail"):
+            self.assertIn(ancre, page, ancre)
+        self.assertIn("Rendement maximal", page)
+        self.assertIn("selon l&#x27;affectation", page)
+
     def test_le_titre_d_un_evenement_est_echappe(self):
         """Un titre d'agenda est du texte saisi : il ne doit pas devenir du HTML."""
         grille = {"employeurs": [{"nom": "X", "taux_net_heure": 10}],

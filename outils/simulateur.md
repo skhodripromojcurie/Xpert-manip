@@ -3,7 +3,13 @@
 Le planning Résonance est fixe : il se lit dans l'agenda. Ce qui se décide, ce
 sont les créneaux qu'on ajoute par-dessus, sur les jours restés libres.
 
+Tout tient sur **une seule page** : la synthèse du mois, la rentabilité par
+site et les scénarios, reliés par un sommaire.
+
 ```
+python3 outils/rapport_html.py --mois 2026-11 --trajets donnees/trajets.json \
+        --cible 5000 --sortie ~/novembre.html
+
 python3 outils/simulateur.py --mois 2026-11 --rentabilite
 python3 outils/simulateur.py --mois 2026-11 --cible 5500
 python3 outils/simulateur.py --mois 2026-11 --sans-gamelle --sans-plafond

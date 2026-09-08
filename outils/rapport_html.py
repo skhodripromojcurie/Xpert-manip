@@ -19,6 +19,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+import simulateur as sim
 import vacations as v
 
 # Palette catégorielle de référence, dans son ordre : c'est l'ordre lui-même qui
@@ -168,6 +169,40 @@ ul.pts li strong { font-weight:650; }
 .sim-l div { font-size:.86rem; }
 .sim-l b { display:block; font-size:1.25rem; font-weight:650; margin-top:2px; }
 .sim-d { color:var(--muted); font-size:.8rem; }
+
+nav.som { position:sticky; top:0; z-index:20; background:var(--plane);
+  border-bottom:1px solid var(--grid); margin:0 0 8px; padding:10px 0 9px;
+  display:flex; flex-wrap:wrap; gap:6px 18px; font-size:.82rem; }
+nav.som a { color:var(--ink-2); text-decoration:none; border-bottom:1px solid transparent; }
+nav.som a:hover { color:var(--ink); border-bottom-color:var(--ink-2); }
+h2 { scroll-margin-top:52px; }
+
+.jauge { display:block; height:6px; border-radius:3px; background:var(--grid);
+  position:relative; margin-top:4px; min-width:70px; }
+.jauge i { position:absolute; left:0; top:0; bottom:0; border-radius:3px;
+  background:var(--s3); }
+.rang { color:var(--muted); font-variant-numeric:tabular-nums; }
+tr.top td { font-weight:600; }
+
+.sc { display:grid; gap:12px;
+  grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); }
+.sc-c { border:1px solid var(--ring); border-radius:12px; padding:16px 18px;
+  background:var(--surface); }
+.sc-c.retenu { border-color:var(--s1); border-width:2px; padding:15px 17px; }
+.sc-c h4 { margin:0 0 2px; font-size:.95rem; }
+.sc-c .note { color:var(--muted); font-size:.78rem; margin:0 0 12px; }
+.sc-c dl { margin:0; display:grid; grid-template-columns:auto auto; gap:5px 10px;
+  font-size:.85rem; align-items:baseline; }
+.sc-c dt { color:var(--ink-2); }
+.sc-c dd { margin:0; text-align:right; font-variant-numeric:tabular-nums;
+  font-weight:600; }
+.sc-c .gros { font-size:1.45rem; font-weight:650; letter-spacing:-.02em;
+  margin:0 0 2px; }
+.sc-c .fourche { color:var(--muted); font-size:.78rem; margin:0 0 12px;
+  font-variant-numeric:tabular-nums; }
+.sc-l { margin:12px 0 0; padding:0; list-style:none; font-size:.8rem;
+  color:var(--ink-2); border-top:1px solid var(--grid); padding-top:10px; }
+.sc-l li { margin-bottom:3px; }
 
 .rappel { margin-top:40px; padding-top:18px; border-top:1px solid var(--grid);
   color:var(--muted); font-size:.8rem; }
@@ -331,7 +366,86 @@ def _bandeau_simulation(sim):
     return "".join(bloc)
 
 
-def construire(a, sim=None):
+def _rentabilite(surs, incertains):
+    """Une ligne par site réel : c'est là qu'on lit l'écart, même subi."""
+    if not surs and not incertains:
+        return ""
+    haut = max((x["par_heure_passee"] or 0) for x in surs + incertains) or 1
+    out = ["<h2 id=rentabilite>Rentabilité par site</h2><div class=carte><table>"
+           "<thead><tr><th>Site</th><th>Séance</th><th class=n>Heures</th>"
+           "<th class=n>Net</th><th class=n>Coûts</th>"
+           "<th class=n>€/h travaillée</th><th>€/h passée</th></tr></thead><tbody>"]
+    for groupe, titre in ((surs, None),
+                          (incertains, "Trajet ou stationnement incertain")):
+        if not groupe:
+            continue
+        if titre:
+            out.append(f'<tr><td colspan=7 class=petit style="padding-top:14px">'
+                       f'<strong>{e(titre)}</strong> — non comparables aux lignes '
+                       f'ci-dessus</td></tr>')
+        for i, x in enumerate(groupe):
+            passee = x["par_heure_passee"]
+            barre = ("" if passee is None else
+                     f'<span class=jauge><i style="width:{passee / haut * 100:.1f}%">'
+                     f'</i></span>')
+            out.append(
+                f'<tr class="{"top" if titre is None and i == 0 else ""}">'
+                f'<td>{e(x["site"].libelle)}</td>'
+                f'<td>{e(sim.MOT_DU_TYPE[x["type"]])}</td>'
+                f'<td class=n>{e(v.format_heures(x["heures"]))}</td>'
+                f'<td class=n>{e(euros(x["net"]))}</td>'
+                f'<td class=n>{"—" if x["manque"] else e(euros(x["cout"]))}</td>'
+                f'<td class=n>{"—" if x["manque"] else e(euros(x["par_heure_travaillee"]))}</td>'
+                f'<td class=n>{"—" if passee is None else e(euros(passee))}{barre}</td>'
+                f'</tr>')
+    out.append("</tbody></table>"
+               '<p class="petit" style="margin:14px 0 0">Le classement se renverse '
+               "selon la colonne : une séance courte amortit mal son trajet. "
+               "L'ordre suit le net par heure travaillée ; la barre montre le net "
+               "par heure passée.</p></div>")
+    return "".join(out)
+
+
+def _scenarios(resultat):
+    """Les trois optimisations côte à côte, sans qu'aucune soit désignée."""
+    out = ["<h2 id=scenarios>Scénarios</h2><div class=sc>"]
+    meilleur = max(resultat["scenarios"], key=lambda s: s["net_apres_cout"])
+    for s in resultat["scenarios"]:
+        f = s["fourchette"]
+        fourche = ""
+        if f["seances"]:
+            fourche = (f'<p class=fourche>de {e(euros(s["net_apres_cout"] + f["pire"]))} '
+                       f'à {e(euros(s["net_apres_cout"] + f["meilleur"]))} '
+                       f'selon l\'affectation</p>')
+        elif not s["seances"]:
+            fourche = '<p class=fourche>&nbsp;</p>'
+        else:
+            fourche = '<p class=fourche>montant ferme</p>'
+        lignes = "".join(
+            f"<li>{e(v.format_jour(x.jour))} — {e(x.site.libelle)} · "
+            f"{e(sim.MOT_DU_TYPE[x.type_creneau])}</li>"
+            for x in sorted(s["seances"], key=lambda x: x.jour))
+        out.append(
+            f'<div class="sc-c{" retenu" if s is meilleur else ""}">'
+            f'<h4>{e(s["nom"])}</h4><p class=note>{e(s["note"])}</p>'
+            f'<p class=gros>{e(euros(s["net_apres_cout"]))}</p>{fourche}'
+            f"<dl>"
+            f"<dt>Séances ajoutées</dt><dd>{len(s['seances'])}</dd>"
+            f"<dt>Net encaissé</dt><dd>{e(euros(s['net']))}</dd>"
+            f"<dt>Coûts</dt><dd>−{e(euros(s['cout']))}</dd>"
+            f"<dt>Heures travaillées</dt><dd>{e(v.format_heures(s['heures']))}</dd>"
+            f"<dt>Trajet</dt><dd>{e(v.format_heures(s['heures_trajet']))}</dd>"
+            f"<dt>Temps total</dt><dd>{e(v.format_heures(s['temps']))}</dd>"
+            f"<dt>€ / h passée</dt><dd>{e(euros(s['par_heure_passee']))}</dd>"
+            f"<dt>Semaines &gt; 48 h</dt><dd>{len(s['depassements'])}</dd>"
+            f"</dl>"
+            + (f"<ul class=sc-l>{lignes}</ul>" if lignes else "")
+            + "</div>")
+    out.append("</div>")
+    return "".join(out)
+
+
+def construire(a, sim_resultat=None, rentab=None, simulation=None):
     # Une couleur ne se dépense que pour un employeur qui apparaît dans le mois.
     # Un salarié mensualisé sans créneau touche son salaire sans occuper de case :
     # lui donner une teinte encombrerait la légende pour rien, et rapprocherait
@@ -363,8 +477,17 @@ def construire(a, sim=None):
     # --- Les trois chiffres qui décident -----------------------------------
     apres = (f"{euros(total * (1 - a['taux_pas']))} après impôt"
              if a["taux_pas"] is not None else "")
-    if sim:
-        out.append(_bandeau_simulation(sim))
+    liens = [("#mois", "Le mois"), ("#semaine", "Semaines"),
+             ("#revenu", "Revenu")]
+    if rentab:
+        liens.append(("#rentabilite", "Rentabilité"))
+    if sim_resultat:
+        liens.append(("#scenarios", "Scénarios"))
+    liens += [("#regarder", "À regarder"), ("#detail", "Détail")]
+    out.append('<nav class="som">'
+               + "".join(f'<a href="{u}">{e(t)}</a>' for u, t in liens) + "</nav>")
+    if simulation:
+        out.append(_bandeau_simulation(simulation))
     out.append('<div class="tuiles">')
     out.append(_tuile("Net du mois", euros(total),
                       apres + (" · comprend une estimation" if estime else "")))
@@ -389,7 +512,7 @@ def construire(a, sim=None):
         f'<span><span class="pastille" style="background:{couleurs[nom]}"></span>'
         f'{e(nom)}</span>' for nom in presents)
 
-    out.append("<h2>Le mois jour par jour</h2><div class=carte>")
+    out.append("<h2 id=mois>Le mois jour par jour</h2><div class=carte>")
     out.append(f'<div class="legende">{legende}</div>')
     out.append(_grille_du_mois(a, couleurs))
     out.append('<div class="cal-leg">'
@@ -399,12 +522,16 @@ def construire(a, sim=None):
                f'{e(v.format_heures(a["repos_minimum"]))} de repos avant ou après</span>'
                '<span>Une case vide est un jour libre.</span></div></div>')
 
-    out.append("<h2>Charge par semaine</h2>")
+    out.append("<h2 id=semaine>Charge par semaine</h2>")
     out.append(f'<div class="carte"><div class="legende">{legende}</div>'
                + _graphique(a, couleurs) + "</div>")
 
     # --- Le revenu ----------------------------------------------------------
-    out.append("<h2>Revenu net par employeur</h2><div class=carte><table>"
+    if rentab:
+        out.append(_rentabilite(*rentab))
+    if sim_resultat:
+        out.append(_scenarios(sim_resultat))
+    out.append("<h2 id=revenu>Revenu net par employeur</h2><div class=carte><table>"
                "<thead><tr><th>Employeur</th><th class=n>Heures</th>"
                "<th class=n>Net</th><th class=n>1 h de plus</th>"
                "<th>Base</th></tr></thead><tbody>")
@@ -451,7 +578,7 @@ def construire(a, sim=None):
     out.append("</div>")
 
     # --- Le détail ----------------------------------------------------------
-    out.append(f'<h2>Détail des créneaux</h2><div class=carte>'
+    out.append(f'<h2 id=detail>Détail des créneaux</h2><div class=carte>'
                f'<details class="detail"><summary>'
                f'{len(a["vacations"])} créneaux, jour par jour</summary><div>'
                "<table>"
@@ -511,7 +638,7 @@ def construire(a, sim=None):
                ("g-warn", "Au-dessus des limites", legaux),
                ("g-info", "À vérifier", infos)]
     if any(p for _, _, p in groupes):
-        out.append("<h2>À regarder</h2><div class=carte>")
+        out.append("<h2 id=regarder>À regarder</h2><div class=carte>")
         for classe, titre, points in groupes:
             if not points:
                 continue
@@ -539,6 +666,11 @@ def main(argv=None):
     p.add_argument("--simuler", action="append", default=[], metavar="HYPOTHÈSE",
                    help="ajoute une vacation fictive et montre ce qu'elle change. "
                         "Ex : --simuler \"24/09 Crystal journée\". Répétable.")
+    p.add_argument("--trajets", type=Path, default=None,
+                   help="fichier de trajets : ajoute la rentabilité par site et "
+                        "les scénarios à la page")
+    p.add_argument("--cible", type=float, default=None,
+                   help="revenu net visé, pour le scénario « cible »")
     p.add_argument("--sortie", type=Path, required=True)
     args = p.parse_args(argv)
 
@@ -556,10 +688,19 @@ def main(argv=None):
     annee, mois = (int(x) for x in args.mois.split("-"))
 
     hypotheses = [v.lire_hypothese(x, annee) for x in args.simuler]
-    sim = (v.simuler(grille, evenements, annee, mois, hypotheses, feries, couleur)
-           if hypotheses else None)
-    analyse = sim["apres"] if sim else v.analyser(grille, evenements, annee, mois, feries)
-    args.sortie.write_text(construire(analyse, sim), encoding="utf-8")
+    simulation = (v.simuler(grille, evenements, annee, mois, hypotheses, feries,
+                            couleur) if hypotheses else None)
+    analyse = (simulation["apres"] if simulation
+               else v.analyser(grille, evenements, annee, mois, feries))
+
+    rentab = resultat = None
+    if args.trajets:
+        trajets = sim.charger_trajets(args.trajets)
+        rentab = sim.rentabilite(grille, trajets, annee, mois)
+        resultat = sim.scenarios(grille, evenements, trajets, annee, mois,
+                                 args.cible, feries=feries)
+    args.sortie.write_text(construire(analyse, resultat, rentab, simulation),
+                           encoding="utf-8")
     print(f"{args.sortie} écrit.")
 
 
