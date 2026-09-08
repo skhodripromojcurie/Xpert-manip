@@ -609,7 +609,8 @@ class MiseEnPage(unittest.TestCase):
                       "id=scenarios", "id=regarder", "id=detail"):
             self.assertIn(ancre, page, ancre)
         self.assertIn("Rendement maximal", page)
-        self.assertIn("selon l&#x27;affectation", page)
+        # Une apostrophe dans du texte HTML n'a pas à être échappée.
+        self.assertIn("selon l'affectation", page)
 
     def test_le_titre_d_un_evenement_est_echappe(self):
         """Un titre d'agenda est du texte saisi : il ne doit pas devenir du HTML."""
@@ -824,6 +825,13 @@ class Simulateur(unittest.TestCase):
         self.assertEqual(f["seances"], 1)
         self.assertLess(f["pire"], 0)        # site plus coûteux : net plus bas
         self.assertGreater(f["meilleur"], 0)
+
+    def test_un_site_unique_n_a_pas_de_fourchette(self):
+        """Un employeur à site unique donne un montant ferme, pas une plage."""
+        altair = next(s for s in self.trajets.sites if "Altair" in s.libelle)
+        seance = simulateur.Seance(date(2026, 9, 5), altair, "matin", True)
+        f = simulateur.fourchette_affectation([seance], self.trajets)
+        self.assertEqual((f["seances"], f["pire"], f["meilleur"]), (0, 0.0, 0.0))
 
     def test_un_employeur_a_site_unique_n_est_pas_moyenne(self):
         self.assertNotIn(v.normaliser("Clinique Altair"),
