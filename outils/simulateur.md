@@ -66,12 +66,14 @@ Elles ne donnent pas la même réponse, et aucune n'est désignée « la bonne �
 | **Revenu maximal** | le net après coûts, sans regarder le temps |
 | **Rendement maximal** | le net après coûts par heure **passée**, trajet compris |
 | **Cible** | atteindre un montant en y passant le moins de temps |
-| **Tous les jours libres** | le plafond de verre : chaque jour entièrement libre rempli |
+| **Tous les jours libres** | chaque jour ouvrable entièrement libre rempli d'une journée |
 
-Le dernier n'est pas une optimisation mais une borne : il dit ce que le
-calendrier permet au maximum, pour qu'on sache ce que coûte la règle des 48 h.
-Le plafond y est **affiché, pas appliqué** — le repos de 11 h, lui, reste
-respecté : c'est une limite qu'on lève, pas une loi qu'on ignore.
+Le dernier n'est ni une optimisation ni une borne, mais une composition : « et
+si je prenais tout ce qui est libre ? ». Le plafond de 48 h y est **affiché,
+pas appliqué**. Le repos de 11 h, lui, filtre toujours — c'est une limite qu'on
+lève, pas une loi qu'on ignore. Il peut donc écarter un jour, auquel cas cette
+composition rapporte **moins** que l'optimum sous contrainte : elle n'est pas
+un maximum, et le rapport ne la présente pas comme tel.
 
 Le découpage par semaine tient l'énumération dans des tailles raisonnables : le
 plafond hebdomadaire est la seule contrainte qui lie des jours entre eux. Les

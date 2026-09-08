@@ -943,8 +943,11 @@ class Simulateur(unittest.TestCase):
         self.assertGreaterEqual(rendement["par_heure_passee"],
                                 revenu["par_heure_passee"] - 1e-9)
         # L'optimiseur n'ajoute rien qui franchisse le plafond — mais il ne peut
-        # pas retirer un dépassement déjà présent dans le planning fixe.
+        # pas retirer un dépassement déjà présent dans le planning fixe. Le
+        # scénario « tous les jours libres », lui, s'affranchit du plafond.
         for s in r["scenarios"]:
+            if s["nom"] == "Tous les jours libres":
+                continue
             self.assertEqual(len(s["depassements"]), len(nu["depassements"]))
 
     def test_le_plafond_de_verre_du_mois(self):
@@ -953,19 +956,19 @@ class Simulateur(unittest.TestCase):
             EXEMPLES / "evenements.exemple.json",
             self.grille.get("couleur_agenda_par_defaut"))
         r = simulateur.scenarios(self.grille, evenements, self.trajets, 2026, 9)
-        plein = r["scenarios"][-1]
-        self.assertEqual(plein["nom"], "Tous les jours libres")
-        # Il ne peut pas rapporter moins que l'optimum sous contrainte.
+        plein = next(s for s in r["scenarios"]
+                     if s["nom"] == "Tous les jours libres")
+        # Ce n'est pas une borne supérieure : c'est une composition. Remplir
+        # chaque jour d'une journée entière peut rapporter moins que l'optimum,
+        # quand le repos écarte un jour que l'optimum aurait pris en demi-journée.
         revenu = next(s for s in r["scenarios"] if s["nom"] == "Revenu maximal")
-        self.assertGreaterEqual(plein["net_apres_cout"], revenu["net_apres_cout"])
-        # Le plafond n'est plus un filtre : il est seulement compté.
         self.assertGreaterEqual(len(plein["depassements"]),
                                 len(revenu["depassements"]))
         # Une séance par jour entièrement libre, jamais deux.
         jours = [x.jour for x in plein["seances"]]
         self.assertEqual(len(jours), len(set(jours)))
         # Et le repos reste respecté : c'est le plafond qu'on lève, pas la loi.
-        self.assertEqual(plein["repos"], [])
+        self.assertEqual(len(plein["repos"]), len(r["nu"]["repos"]))
 
     def test_une_cible_hors_d_atteinte_est_annoncee(self):
         evenements = v.charger_evenements(
@@ -973,7 +976,7 @@ class Simulateur(unittest.TestCase):
             self.grille.get("couleur_agenda_par_defaut"))
         r = simulateur.scenarios(self.grille, evenements, self.trajets, 2026, 9,
                                  cible=99999)
-        cible = r["scenarios"][-1]
+        cible = next(s for s in r["scenarios"] if s["nom"].startswith("Cible"))
         self.assertTrue(cible["impossible"])
         self.assertEqual(cible["seances"], [])
 

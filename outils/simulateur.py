@@ -798,13 +798,18 @@ def remplir_jours_libres(grille, trajets, analyse, annee, mois,
                          type_creneau="journee", gamelle=True):
     """Une séance sur chaque jour entièrement libre, sans regarder le plafond.
 
-    Ce n'est pas une optimisation : c'est le plafond de verre du mois. Il dit ce
-    que le calendrier permet au maximum, pour qu'on sache ce que coûte la règle
-    des 48 h — laquelle reste affichée, mais ne filtre rien ici.
+    Ce n'est ni une optimisation ni une borne, mais une composition : « et si je
+    prenais tout ce qui est libre ? ». Elle dit ce que coûte la règle des 48 h,
+    qui reste affichée mais ne filtre rien ici. Le repos de onze heures, lui,
+    filtre toujours — c'est un plafond qu'on lève, pas une loi qu'on ignore — et
+    il peut donc écarter un jour, auquel cas cette composition rapporte moins
+    que l'optimum sous contrainte.
     """
     regles = v.construire_regles(grille)
     douteux = jours_douteux(analyse)
-    seances = []
+    _bidon = type("R", (), {"libelle": "planning"})()
+    poses = [c for vac in analyse["vacations"] for c in vac["creneaux"]]
+    seances, ecartes = [], []
     for jour, etat in sorted(creneaux_libres(analyse, douteux).items()):
         if not (etat["matin"] and etat["apres_midi"]):
             continue
@@ -815,10 +820,24 @@ def remplir_jours_libres(grille, trajets, analyse, annee, mois,
                 continue
             if type_creneau not in types_possibles(site, regle, jour):
                 continue
-            seances.append(Seance(jour, site, type_creneau, gamelle,
-                                  mot_cle=(regle.mots_cles or [""])[0]))
+            seance = Seance(jour, site, type_creneau, gamelle,
+                            mot_cle=(regle.mots_cles or [""])[0])
+            valeur = valeur_seance(seance, grille, regles, trajets, annee, mois)
+            if not valeur:
+                continue
+            # C'est le plafond qu'on lève ici, pas le repos : onze heures entre
+            # deux journées restent un minimum légal, pas une préférence.
+            avant = [{"creneaux": list(poses), "regle": _bidon}]
+            apres = [{"creneaux": poses + list(valeur["creneaux"]),
+                      "regle": _bidon}]
+            if (len(v.repos_insuffisants(apres, analyse["repos_minimum"]))
+                    > len(v.repos_insuffisants(avant, analyse["repos_minimum"]))):
+                ecartes.append(seance)
+                break
+            poses += list(valeur["creneaux"])
+            seances.append(seance)
             break
-    return seances
+    return seances, ecartes
 
 
 def scenarios(grille, evenements, trajets, annee, mois, cible=None,
@@ -836,8 +855,8 @@ def scenarios(grille, evenements, trajets, annee, mois, cible=None,
     propositions.append(("Rendement maximal",
                          optimiser_rendement(paquets, nu["net_apres_cout"], nu["temps"]),
                          "le meilleur euro par heure passée, trajet compris"))
-    plein = remplir_jours_libres(grille, trajets, nu["analyse"], annee, mois,
-                                 gamelle=gamelle)
+    plein, plein_ecartes = remplir_jours_libres(
+        grille, trajets, nu["analyse"], annee, mois, gamelle=gamelle)
     if cible is not None:
         choix = optimiser_cible(paquets, cible, nu["net_apres_cout"])
         propositions.append((
@@ -848,8 +867,9 @@ def scenarios(grille, evenements, trajets, annee, mois, cible=None,
     if plein:
         propositions.append((
             "Tous les jours libres", "PLEIN",
-            "chaque jour entièrement libre rempli — le plafond de 48 h n'est "
-            "plus un filtre, seulement une information"))
+            "chaque jour ouvrable entièrement libre rempli d'une journée — le "
+            "plafond de 48 h n'y est plus un filtre, seulement une information ; "
+            "le repos de 11 h, lui, écarte toujours"))
 
     resultats = []
     for nom, paquets_choisis, note in propositions:
@@ -863,7 +883,7 @@ def scenarios(grille, evenements, trajets, annee, mois, cible=None,
                            "impossible": paquets_choisis is None})
         resultats.append(evaluation)
     return {"nu": nu, "candidats": liste, "scenarios": resultats,
-            "plein": plein,
+            "plein": plein, "plein_ecartes": plein_ecartes,
             "ecartes_repos": ecartes, "jours_douteux": douteux, "cible": cible,
             "libres": creneaux_libres(nu["analyse"], douteux)}
 
