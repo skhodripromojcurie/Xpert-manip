@@ -84,6 +84,8 @@ class Site:
     stationnement_incertain: bool = False
     stationnement_approx: str = ""
     note_duree: str = ""
+    # Renseigné sur un site moyen : les sites réels qu'il résume.
+    sites_couverts: list = field(default_factory=list)
 
     @property
     def libelle(self):
@@ -109,13 +111,57 @@ class Site:
         return None if minutes is None else 2 * minutes / 60.0
 
 
+def site_moyen(sites, employeur):
+    """Un site fictif, moyenne de plusieurs, pour une affectation qu'on subit.
+
+    Quand c'est l'employeur qui décide sur quel site on travaille, chiffrer un
+    créneau sur le meilleur des siens revient à promettre un optimum dont on
+    n'a pas la main. La moyenne est le chiffre honnête ; l'écart entre le pire
+    et le meilleur site dit de combien le réel s'en écartera.
+    """
+    connus = [s for s in sites if s.trajet_connu]
+    if not connus:
+        return None
+    if len(connus) == 1:
+        return connus[0]
+
+    def _moyenne(valeurs):
+        valeurs = [x for x in valeurs if x is not None]
+        return sum(valeurs) / len(valeurs) if valeurs else None
+
+    minutes, fiabilite = {}, {}
+    for regime in ("samedi", "semaine"):
+        minutes[regime] = _moyenne([s.minutes.get(regime) for s in connus])
+        vues = {s.fiabilite.get(regime, THEORIQUE) for s in connus}
+        # La moyenne ne vaut pas mieux que le moins sûr de ses termes.
+        fiabilite[regime] = (MESUREE if vues == {MESUREE}
+                             else THEORIQUE if THEORIQUE in vues else EXTRAPOLEE)
+    stationnements = [s.stationnement_eur for s in connus]
+    moyen = Site(
+        employeur=employeur, site=f"moyenne des {len(connus)} sites",
+        adresse="", stationnement="moyenne des sites",
+        km_aller=_moyenne([s.km_aller for s in connus]),
+        minutes=minutes, fiabilite=fiabilite,
+        stationnement_eur=(None if any(x is None for x in stationnements)
+                           else _moyenne(stationnements)),
+        stationnement_incertain=any(s.stationnement_incertain for s in connus))
+    moyen.sites_couverts = connus
+    return moyen
+
+
 @dataclass
 class Trajets:
     sites: list
     cout_par_km: float
     repas_eur: float
     domicile: str = ""
+    # Employeur normalisé -> site moyen, quand l'affectation ne se choisit pas.
+    affectation_imposee: dict = field(default_factory=dict)
     alertes: list = field(default_factory=list)
+
+    def site_a_simuler(self, site):
+        """Le site à retenir pour chiffrer un créneau qu'on ne place pas soi-même."""
+        return self.affectation_imposee.get(v.normaliser(site.employeur), site)
 
     def carburant(self, site):
         if not site.trajet_connu:
@@ -177,8 +223,22 @@ def charger_trajets(chemin):
         if site.stationnement_eur is None and not site.stationnement_incertain:
             alertes.append(f"{site.libelle} : stationnement « {stationnement} », "
                            f"montant inconnu — non déduit.")
+    # Par défaut, un employeur à plusieurs sites affecte lui-même : on ne
+    # suppose pas que le créneau tombera sur le meilleur des siens. Un employeur
+    # peut déclarer « affectation: choisie » pour reprendre la main.
+    choisies = {v.normaliser(x) for x in d.get("employeurs_a_affectation_choisie", [])}
+    moyens = {}
+    par_employeur = {}
+    for site in sites:
+        par_employeur.setdefault(site.employeur, []).append(site)
+    for employeur, liste in par_employeur.items():
+        if len(liste) > 1 and v.normaliser(employeur) not in choisies:
+            moyen = site_moyen(liste, employeur)
+            if moyen is not None:
+                moyens[v.normaliser(employeur)] = moyen
     return Trajets(sites=sites, cout_par_km=cout_km, repas_eur=repas,
-                   domicile=(d.get("domicile") or {}).get("ville", ""), alertes=alertes)
+                   domicile=(d.get("domicile") or {}).get("ville", ""),
+                   affectation_imposee=moyens, alertes=alertes)
 
 
 # --------------------------------------------------------------------------
@@ -445,12 +505,13 @@ def couts_du_planning(analyse, trajets):
         # Le titre décide quand il nomme le site. Sinon on prend le plus proche,
         # ce qui est une hypothèse basse — et qui se dit.
         nomme = site_du_titre(vac["evenement"].titre, chiffrables)
-        if nomme is None and len(candidats) > 1:
+        moyen = trajets.affectation_imposee.get(v.normaliser(chiffrables[0].employeur))
+        if nomme is None and len(chiffrables) > 1:
             imprecis.append(vac["evenement"].titre)
         for jour in vac["jours"]:
             if not (analyse["debut_mois"] <= jour <= analyse["fin_mois"]):
                 continue
-            site = nomme or min(chiffrables, key=lambda s: s.km_aller)
+            site = nomme or moyen or min(chiffrables, key=lambda s: s.km_aller)
             cout = trajets.carburant(site) + (site.stationnement_eur or 0.0)
             total += cout
             heures = site.heures_trajet(jour)
@@ -517,8 +578,13 @@ def candidats(grille, trajets, analyse, annee, mois, gamelle=True,
     repos_de_base = len(v.repos_insuffisants(fixes, analyse["repos_minimum"]))
     ecartes = []
     trouves = []
+    vus_par_jour = set()
     for jour, etat in libres.items():
-        for site in trajets.sites:
+        for brut in trajets.sites:
+            site = trajets.site_a_simuler(brut)
+            if (jour, site.libelle) in vus_par_jour and site.sites_couverts:
+                continue
+            vus_par_jour.add((jour, site.libelle))
             regle = _regle_du_site(site, regles)
             if regle is None or v.est_mensualise(regle.employeur):
                 continue
@@ -689,6 +755,23 @@ def optimiser_cible(paquets_par_semaine, cible, base_net=0.0, pas=5.0):
 # Évaluer un scénario pour de bon
 # --------------------------------------------------------------------------
 
+def fourchette_affectation(seances, trajets):
+    """De combien le résultat s'écarterait si tous les créneaux tombaient sur le
+    pire, puis sur le meilleur des sites de leur employeur."""
+    pire = meilleur = 0.0
+    concernees = 0
+    for seance in seances:
+        couverts = seance.site.sites_couverts
+        if not couverts:
+            continue
+        concernees += 1
+        base = trajets.carburant(seance.site) + (seance.site.stationnement_eur or 0.0)
+        couts = [trajets.carburant(s) + (s.stationnement_eur or 0.0) for s in couverts]
+        pire += base - max(couts)          # coût plus élevé : net plus bas
+        meilleur += base - min(couts)
+    return {"seances": concernees, "pire": pire, "meilleur": meilleur}
+
+
 def evaluer(grille, evenements, trajets, annee, mois, seances=(), feries=()):
     """Le mois complet, planning fixe et séances ajoutées confondus.
 
@@ -716,6 +799,7 @@ def evaluer(grille, evenements, trajets, annee, mois, seances=(), feries=()):
         "par_heure_passee": (net - couts["total"] - repas) / temps if temps else 0.0,
         "couts_par_site": couts["par_site"], "sites_inconnus": couts["sites_inconnus"],
         "titres_sans_site": couts["titres_sans_site"],
+        "fourchette": fourchette_affectation(seances, trajets),
         "depassements": [s for s in analyse["semaines"].values() if s["depassement"]],
         "repos": analyse["repos_insuffisants"],
         "conflits": analyse["chevauchements"]["entre_vacations"],
@@ -813,6 +897,15 @@ def rapport_scenarios(resultat, plafond):
     lignes.append(ligne("Net encaissé", [_eur(s["net"]) for s in colonnes]))
     lignes.append(ligne("Coûts", [_eur(-s["cout"]) for s in colonnes]))
     lignes.append(ligne("Net après coûts", [_eur(s["net_apres_cout"]) for s in colonnes]))
+    if any(s["fourchette"]["seances"] for s in colonnes):
+        lignes.append(ligne("  selon l'affectation", [
+            "—" if not s["fourchette"]["seances"] else
+            f"{_eur(s['net_apres_cout'] + s['fourchette']['pire'])}"
+            for s in colonnes]))
+        lignes.append(ligne("  … à", [
+            "—" if not s["fourchette"]["seances"] else
+            f"{_eur(s['net_apres_cout'] + s['fourchette']['meilleur'])}"
+            for s in colonnes]))
     lignes.append(ligne("Heures travaillées",
                         [v.format_heures(s["heures"]) for s in colonnes]))
     lignes.append(ligne("Heures de trajet",
@@ -852,15 +945,27 @@ def rapport_scenarios(resultat, plafond):
             "pour Crystal est arbitraire — c'est le premier de la\n    liste, pas "
             "le plus proche. Renseigner « distance_domicile_km_aller » et\n"
             "    « duree_domicile_min_aller » dans trajets.json les départagera.")
+    imposees = {s.site.libelle for x in resultat["scenarios"]
+                for s in x["seances"] if s.site.sites_couverts}
+    if imposees:
+        lignes.append(
+            "  ⚠ Les créneaux d'un employeur qui affecte lui-même ses sites sont "
+            "chiffrés\n    sur la MOYENNE de ses sites, pas sur le meilleur : "
+            + ", ".join(sorted(imposees)) + ".\n"
+            "    Les deux lignes « selon l'affectation » donnent ce que le mois "
+            "vaudrait si tous\n    ces créneaux tombaient sur le site le plus "
+            "coûteux, puis sur le moins coûteux.\n    L'écart ne dépend pas de "
+            "toi.")
     sans_site = resultat["nu"]["titres_sans_site"]
     if sans_site:
         lignes.append(
             f"  ⚠ {len(sans_site)} titre(s) d'agenda ne nomment pas leur site alors "
             f"que l'employeur en a plusieurs :\n    "
             + ", ".join(f"« {t} »" for t in sans_site)
-            + "\n    Le site le plus proche a été retenu — hypothèse basse sur le "
-              "coût. Écrire\n    « Crystal Colombes journée » plutôt que "
-              "« Crystal journée » lèvera le doute.")
+            + "\n    La moyenne des sites de l'employeur a été retenue. Écrire "
+              "« Crystal Colombes\n    journée » plutôt que « Crystal journée » "
+              "donnera le coût réel — utile a posteriori,\n    une fois "
+              "l'affectation connue.")
     for jour, titre in sorted(resultat["jours_douteux"].items()):
         lignes.append(f"  ⚠ {v.format_jour(jour)} écarté des jours libres : "
                       f"« {titre} » ressemble à un créneau dont le titre est mal "

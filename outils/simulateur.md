@@ -78,6 +78,25 @@ un sac à dos sur les semaines.
 - **Un site pour un employeur mensualisé** : son heure marginale vaut zéro, une
   rentabilité horaire n'aurait pas de sens.
 
+## Quand ce n'est pas vous qui choisissez le site
+
+Un employeur à plusieurs sites décide souvent lui-même où vous placer. Chiffrer
+un créneau sur le meilleur de ses sites reviendrait alors à promettre un optimum
+dont vous n'avez pas la main.
+
+Par défaut, **un employeur à plusieurs sites est donc réputé affecter lui-même**.
+Ses créneaux simulés sont chiffrés sur la **moyenne** de ses sites, et le rapport
+donne l'écart : ce que le mois vaudrait si tous ces créneaux tombaient sur le
+site le plus coûteux, puis sur le moins coûteux. Cet écart ne dépend pas de vous
+— il est là pour être su, pas pour être optimisé.
+
+`employeurs_a_affectation_choisie: ["…"]` à la racine de `trajets.json` rend la
+main sur un employeur dont on choisit réellement le site : ses sites redeviennent
+des options distinctes.
+
+Le classement de rentabilité, lui, garde une ligne **par site réel** : c'est là
+qu'on lit l'écart entre le meilleur et le pire, même quand on ne le choisit pas.
+
 ## Nommer le site dans le titre
 
 Un employeur à plusieurs sites ne dit pas dans l'agenda lequel : « Crystal

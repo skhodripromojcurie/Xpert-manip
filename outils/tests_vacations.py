@@ -777,6 +777,40 @@ class Simulateur(unittest.TestCase):
         finally:
             os.unlink(chemin)
 
+    def test_affectation_imposee_chiffre_la_moyenne(self):
+        """Deux sites Vega, affectation subie : c'est la moyenne qui chiffre."""
+        moyen = self.trajets.affectation_imposee[v.normaliser("Cabinet Vega")]
+        self.assertEqual(moyen.km_aller, 8)                  # (10 + 6) / 2
+        self.assertEqual(moyen.minutes_aller(date(2026, 9, 2)), 16)
+        self.assertEqual(len(moyen.sites_couverts), 2)
+        # Un stationnement inconnu sur l'un des sites ne devient pas un zéro.
+        self.assertIsNone(moyen.stationnement_eur)
+
+    def test_un_seul_candidat_par_jour_pour_un_employeur_impose(self):
+        """Sinon l'optimiseur choisirait un site que l'employeur assigne."""
+        ev = [v.Evenement("1", "Rien", datetime(2026, 9, 2), datetime(2026, 9, 3),
+                          True, None, False)]
+        a = v.analyser(self.grille, ev, 2026, 9)
+        liste, _, _ = simulateur.candidats(self.grille, self.trajets, a, 2026, 9)
+        jeudi = [x for x in liste if x["jour"] == date(2026, 9, 3)
+                 and "Vega" in x["seance"].site.libelle]
+        self.assertTrue(jeudi)
+        self.assertEqual({x["seance"].site.libelle for x in jeudi},
+                         {"Cabinet Vega — moyenne des 2 sites"})
+
+    def test_la_fourchette_encadre_la_moyenne(self):
+        """Le pire et le meilleur site encadrent le chiffre annoncé."""
+        moyen = self.trajets.affectation_imposee[v.normaliser("Cabinet Vega")]
+        seance = simulateur.Seance(date(2026, 9, 2), moyen, "journee", True)
+        f = simulateur.fourchette_affectation([seance], self.trajets)
+        self.assertEqual(f["seances"], 1)
+        self.assertLess(f["pire"], 0)        # site plus coûteux : net plus bas
+        self.assertGreater(f["meilleur"], 0)
+
+    def test_un_employeur_a_site_unique_n_est_pas_moyenne(self):
+        self.assertNotIn(v.normaliser("Clinique Altair"),
+                         self.trajets.affectation_imposee)
+
     def test_rentabilite_classee_et_separee(self):
         surs, incertains = simulateur.rentabilite(self.grille, self.trajets, 2026, 9)
         # Le site au stationnement variable est mis à part, pas noyé dans le tri.
