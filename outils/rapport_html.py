@@ -102,6 +102,12 @@ h2 { font-size:.82rem; text-transform:uppercase; letter-spacing:.07em;
   min-height:62px; background:var(--surface); }
 .cal-j.hors { opacity:.38; }
 .cal-j.repos { border-color:var(--warn); }
+.cal-j.illisible { border-color:var(--crit); border-style:dashed;
+  background:repeating-linear-gradient(135deg, transparent, transparent 5px,
+    var(--grid) 5px, var(--grid) 6px); }
+.cal-j.illisible .num { color:var(--crit); font-weight:650; }
+.cal-j .illis { display:block; margin-top:5px; font-size:.66rem; color:var(--crit);
+  font-weight:600; line-height:1.25; }
 .cal-j.conflit { border-color:var(--crit); border-width:2px; padding:4px 5px 5px; }
 .cal-j .num { font-size:.72rem; color:var(--muted); font-variant-numeric:tabular-nums; }
 .cal-j .jt { float:right; font-size:.72rem; font-weight:650;
@@ -121,6 +127,8 @@ h2 { font-size:.82rem; text-transform:uppercase; letter-spacing:.07em;
 .cal-s.depasse { background:var(--warn-bg); }
 .cal-s.depasse b, .cal-s.depasse span { color:var(--warn-ink); }
 .cal-s.limite b { color:var(--warn-ink); }
+.cal-s.partiel b { color:var(--crit); }
+.cal-s.partiel span { color:var(--crit); }
 .cal-leg { display:flex; flex-wrap:wrap; gap:14px; margin-top:14px;
   font-size:.78rem; color:var(--muted); }
 .cal-leg i { display:inline-block; width:10px; height:10px; border-radius:3px;
@@ -269,6 +277,7 @@ def _grille_du_mois(a, couleurs):
     repos = {r["debut"].date() for r in a["repos_insuffisants"]}
     repos |= {r["fin"].date() for r in a["repos_insuffisants"]}
     conflits = {c["debut"].date() for c in a["chevauchements"]["entre_vacations"]}
+    illisibles = a["jours_illisibles"]
 
     cases = ['<div class="cal">']
     for nom in ("lun", "mar", "mer", "jeu", "ven", "sam", "dim"):
@@ -282,7 +291,12 @@ def _grille_du_mois(a, couleurs):
             classes = ["cal-j"]
             if not (premier <= jour <= dernier):
                 classes.append("hors")
-            if jour in conflits:
+            # Un jour sans heures parce que son titre ne se lit pas n'est pas un
+            # jour libre : sans cette marque, la case vide dit le contraire du vrai.
+            illisible = illisibles.get(jour)
+            if illisible:
+                classes.append("illisible")
+            elif jour in conflits:
                 classes.append("conflit")
             elif jour in repos:
                 classes.append("repos")
@@ -292,10 +306,12 @@ def _grille_du_mois(a, couleurs):
                 f'{e(v.format_heures(h))}</span>'
                 for nom, h in sorted(travail.items(), key=lambda kv: -kv[1]))
             total = sum(travail.values())
+            marque = (f'<span class=illis>« {e(illisible)} »<br>titre non lu</span>'
+                      if illisible else "")
             cases.append(f'<div class="{" ".join(classes)}">'
                          f'<span class="num">{jour.day}</span>'
                          f'{f"<span class=jt>{e(v.format_heures(total))}</span>" if travail else ""}'
-                         f'<div class="puces">{puces}</div></div>')
+                         f'<div class="puces">{puces}</div>{marque}</div>')
             jour += timedelta(days=1)
         # Une semaine sans vacation n'a pas d'entrée dans l'analyse : elle vaut
         # zéro heure et tout le plafond disponible — l'information qu'on cherche
@@ -303,13 +319,21 @@ def _grille_du_mois(a, couleurs):
         semaine = a["semaines"].get((jour - timedelta(days=7)).isocalendar()[:2],
                                     {"heures": 0.0, "reste": a["plafond"],
                                      "depassement": False})
-        etat = ("depasse" if semaine["depassement"]
+        # Une semaine qui contient un jour illisible est sous-comptée : son
+        # total ne doit pas se lire comme un total.
+        debut_semaine = jour - timedelta(days=7)
+        partielle = any(debut_semaine + timedelta(days=i) in illisibles
+                        for i in range(7))
+        etat = ("partiel" if partielle
+                else "depasse" if semaine["depassement"]
                 else "limite" if semaine["reste"] == 0 else "")
-        reste = (f"reste {v.format_heures(semaine['reste'])}" if semaine["reste"] > 0
+        reste = ("total incomplet" if partielle
+                 else f"reste {v.format_heures(semaine['reste'])}" if semaine["reste"] > 0
                  else "à la limite" if semaine["reste"] == 0
                  else f"+{v.format_heures(-semaine['reste'])}")
         cases.append(f'<div class="cal-s {etat}">'
-                     f'<b>{e(v.format_heures(semaine["heures"]))}</b>'
+                     f'<b>{"≥ " if partielle else ""}'
+                     f'{e(v.format_heures(semaine["heures"]))}</b>'
                      f'<span>{e(reste)}</span></div>')
     cases.append("</div>")
     return "".join(cases)
@@ -520,7 +544,10 @@ def construire(a, sim_resultat=None, rentab=None, simulation=None):
                'se chevauchent</span>'
                f'<span><i style="border-color:var(--warn)"></i>moins de '
                f'{e(v.format_heures(a["repos_minimum"]))} de repos avant ou après</span>'
-               '<span>Une case vide est un jour libre.</span></div></div>')
+               + (f'<span><i style="border-color:var(--crit);border-style:dashed">'
+                  f'</i>titre non lu — le jour n\'est pas libre</span>'
+                  if a["jours_illisibles"] else "")
+               + '<span>Une case vide est un jour libre.</span></div></div>')
 
     out.append("<h2 id=semaine>Charge par semaine</h2>")
     out.append(f'<div class="carte"><div class="legende">{legende}</div>'

@@ -593,6 +593,20 @@ class MiseEnPage(unittest.TestCase):
         self.assertIn("2 552,73 €", page)          # Orion, mensualisé
         self.assertIn("51 h", page)                # la semaine hors plafond
 
+    def test_un_jour_illisible_ne_passe_pas_pour_libre(self):
+        """Une case vide dit « jour libre » : un titre non lu doit se distinguer."""
+        grille = json.loads(
+            (EXEMPLES / "grille.exemple.json").read_text(encoding="utf-8"))
+        ev = [v.Evenement("1", "8h19h", datetime(2026, 9, 2), datetime(2026, 9, 3),
+                          True, "basilic", True)]
+        a = v.analyser(grille, ev, 2026, 9)
+        self.assertEqual(a["jours_illisibles"], {date(2026, 9, 2): "8h19h"})
+        page = rapport_html.construire(a)
+        self.assertIn("titre non lu", page)
+        self.assertIn("cal-j illisible", page)
+        # Et la semaine qui le contient annonce un total incomplet.
+        self.assertIn("total incomplet", page)
+
     def test_la_page_reunit_les_deux_outils(self):
         """Une seule page : synthèse du mois, rentabilité et scénarios."""
         grille = json.loads(

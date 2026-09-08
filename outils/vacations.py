@@ -875,6 +875,7 @@ def analyser(grille, evenements, annee, mois, feries=()):
         "repos_insuffisants": repos_insuffisants(vacations, repos_mini, pause_maxi,
                                                 amplitude_maxi),
         "par_jour": par_jour,
+        "jours_illisibles": jours_illisibles(autres, regles),
         "taux_pas": (float(grille["taux_prelevement_source"])
                      if grille.get("taux_prelevement_source") is not None else None),
         "regles": regles, "vacations": vacations, "autres": autres,
@@ -931,6 +932,23 @@ def repos_insuffisants(vacations, minimum=REPOS_DEFAUT,
                             "avant": sorted(avant["employeurs"]),
                             "apres": sorted(apres["employeurs"])})
     return manques
+
+
+def jours_illisibles(autres, regles):
+    """Les jours portant un événement qui ressemble à un créneau, sans se lire.
+
+    Un titre mal formé — « 8h19h » pour « 8-19h » — n'est reconnu par personne.
+    Le jour se retrouve alors sans heures, ce qui le fait passer pour libre : le
+    contraire exact de la vérité. Il doit donc se distinguer d'un jour vide.
+    """
+    couleurs = {c for r in regles for c in r.couleurs}
+    illisibles = {}
+    for ev in autres:
+        if (ev.couleur in couleurs and re.search(r"\d\s*[hH]", ev.titre)
+                and not lire_plage(ev.titre)[0]):
+            for jour in ev.jours:
+                illisibles[jour] = ev.titre
+    return illisibles
 
 
 def chevauchements(vacations, autres):

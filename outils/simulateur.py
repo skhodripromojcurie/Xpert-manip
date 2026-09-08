@@ -529,22 +529,10 @@ def couts_du_planning(analyse, trajets):
 # Les créneaux qu'il reste à prendre
 # --------------------------------------------------------------------------
 
-def jours_douteux(analyse, regles):
-    """Les jours portant un événement qui ressemble à un créneau non lu.
-
-    Un titre mal formé — « 8h19h » pour « 8-19h » — n'est reconnu par personne.
-    Le jour paraît libre alors qu'il ne l'est pas, et le simulateur proposerait
-    d'y poser une vacation par-dessus une autre. On l'écarte plutôt que de
-    proposer un conflit.
-    """
-    couleurs = {c for r in regles for c in r.couleurs}
-    douteux = {}
-    for ev in analyse["autres"]:
-        if (ev.couleur in couleurs and re.search(r"\d\s*[hH]", ev.titre)
-                and not v.lire_plage(ev.titre)[0]):
-            for jour in ev.jours:
-                douteux[jour] = ev.titre
-    return douteux
+def jours_douteux(analyse, regles=None):
+    """Les jours qu'un titre illisible rend faussement libres — voir
+    `vacations.jours_illisibles`, dont ceci n'est que le point d'entrée."""
+    return analyse["jours_illisibles"]
 
 
 def creneaux_libres(analyse, douteux=()):
