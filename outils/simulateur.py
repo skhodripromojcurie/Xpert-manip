@@ -1007,10 +1007,19 @@ def par_semaine(grille, evenements, trajets, annee, mois, gamelle=True,
         rentable = max(possibles,
                        key=lambda p: p["net_apres_cout"] / p["temps"] if p["temps"] else 0,
                        default=None)
-        nuits = sorted({x["jour"] for x in liste
-                        if x["seance"].site.employeur.lower().startswith("hopital")
-                        or "delafontaine" in x["seance"].site.libelle.lower()}
-                       & {semaine["debut"] + timedelta(days=i) for i in range(7)})
+        # Une nuit se reconnaît à son type, pas au nom d'un employeur : sans
+        # quoi la règle ne vaut que pour celui qu'on avait sous les yeux.
+        nuits = []
+        for x in liste:
+            if x["seance"].type_creneau != "nuit":
+                continue
+            if not semaine["debut"] <= x["jour"] <= semaine["fin"]:
+                continue
+            nuits.append({"jour": x["jour"], "heures": x["heures"],
+                          "site": x["seance"].site.libelle,
+                          "tient": semaine["heures"] + x["heures"] <= analyse["plafond"],
+                          "depasse": semaine["heures"] + x["heures"] - analyse["plafond"]})
+        nuits.sort(key=lambda n: n["jour"])
         lignes.append({
             "annee": cle[0], "numero": cle[1],
             "debut": semaine["debut"], "fin": semaine["fin"],
@@ -1060,12 +1069,77 @@ def rapport_semaines(resultat, plafond):
                 f"{_eur(autre['net_apres_cout'])} en "
                 f"{v.format_heures(autre['temps'])}, soit "
                 f"{autre['net_apres_cout'] / autre['temps']:.2f} €/h passée")
-        if s["nuits_possibles"]:
-            lignes.append("     Occasion : nuit Delafontaine possible le "
-                          + ", ".join(v.format_jour(j) for j in s["nuits_possibles"]))
-        elif s["ecartes"]:
+        for n in s["nuits_possibles"]:
+            if n["tient"]:
+                lignes.append(f"     Occasion : nuit {n['site']} le "
+                              f"{v.format_jour(n['jour'])} — le repos le permet "
+                              f"et elle tient sous le plafond.")
+            else:
+                lignes.append(f"     Nuit {n['site']} possible le "
+                              f"{v.format_jour(n['jour'])} côté repos, mais elle "
+                              f"porterait la semaine à "
+                              f"{v.format_heures(s['fixe'] + n['heures'])} — "
+                              f"{v.format_heures(n['depasse'])} au-dessus du plafond.")
+        if not s["nuits_possibles"] and s["ecartes"]:
             lignes.append(f"     {len(s['ecartes'])} créneaux écartés faute de "
                           f"11 h de repos.")
+    return "\n".join(lignes) + "\n"
+
+
+def options(grille, evenements, trajets, annee, mois, gamelle=True,
+            plafond=True, feries=()):
+    """Chaque créneau libre, chiffré seul : le menu, pas le menu imposé.
+
+    Les scénarios répondent « quelle est la meilleure combinaison ». Cette vue
+    répond à la question d'à côté, celle qu'on se pose quand on décroche le
+    téléphone : « ce créneau-là, il vaut quoi, et qu'est-ce qu'il me laisse ? »
+    """
+    nu = evaluer(grille, evenements, trajets, annee, mois, (), feries)
+    analyse = nu["analyse"]
+    liste, ecartes, _ = candidats(grille, trajets, analyse, annee, mois, gamelle)
+
+    lignes = []
+    for x in liste:
+        semaine = analyse["semaines"].get(x["semaine"], {"heures": 0.0,
+                                                         "reste": analyse["plafond"]})
+        reste = semaine["reste"] - x["heures"]
+        temps = x["heures_passees"] if x["heures_passees"] is not None else x["heures"]
+        lignes.append({
+            "jour": x["jour"], "semaine": x["semaine"][1],
+            "seance": x["seance"], "heures": x["heures"],
+            "net": x["net"], "cout": x["cout"],
+            "net_apres_cout": x["net_apres_cout"],
+            "trajet": x["heures_trajet"], "temps": temps,
+            "par_heure_passee": x["net_apres_cout"] / temps if temps else 0.0,
+            "reste_semaine": reste,
+            "tient": reste >= 0 or not plafond,
+            "fourchette": fourchette_affectation([x["seance"]], trajets),
+        })
+    lignes.sort(key=lambda x: (-x["par_heure_passee"], x["jour"]))
+    return {"nu": nu, "options": lignes, "ecartes": ecartes}
+
+
+def rapport_options(resultat, plafond):
+    lignes = [v._titre("Tableau de simulation — chaque créneau libre, chiffré seul")]
+    gabarit = ("  {:<22}{:<34}{:<9}{:>7}{:>10}{:>8}{:>10}{:>9}{:>11}{:>12}")
+    lignes.append(gabarit.format(
+        "Date", "Site", "Séance", "Heures", "Net", "Frais", "Net réel",
+        "Trajet", "€/h passée", "Reste sem."))
+    for x in resultat["options"]:
+        marque = "" if x["tient"] else "  ⚠ dépasse le plafond"
+        lignes.append(gabarit.format(
+            f"{v.format_jour(x['jour'])} (S{x['semaine']})",
+            x["seance"].site.libelle[:33],
+            MOT_DU_TYPE[x["seance"].type_creneau],
+            v.format_heures(x["heures"]), _eur(x["net"]), _eur(x["cout"]),
+            _eur(x["net_apres_cout"]),
+            v.format_heures(x["trajet"]) if x["trajet"] is not None else "—",
+            f"{x['par_heure_passee']:.2f} €".replace(".", ","),
+            (v.format_heures(x["reste_semaine"]) if x["reste_semaine"] >= 0
+             else "− " + v.format_heures(-x["reste_semaine"]))) + marque)
+    if resultat["ecartes"]:
+        lignes.append(f"\n  {len(resultat['ecartes'])} créneaux non proposés : "
+                      f"ils laisseraient moins de 11 h de repos.")
     return "\n".join(lignes) + "\n"
 
 
@@ -1081,6 +1155,8 @@ def main(argv=None):
                    help="compter un repas payé à chaque séance ajoutée")
     p.add_argument("--sans-plafond", action="store_true",
                    help="laisser les scénarios dépasser les 48 h hebdomadaires")
+    p.add_argument("--options", action="store_true",
+                   help="tableau de simulation : chaque créneau libre, chiffré seul")
     p.add_argument("--semaines", action="store_true",
                    help="détail semaine par semaine, classé au rendement")
     p.add_argument("--rentabilite", action="store_true",
@@ -1101,6 +1177,11 @@ def main(argv=None):
 
     evenements = v.charger_evenements(args.evenements,
                                       grille.get("couleur_agenda_par_defaut"))
+    if args.options:
+        r = options(grille, evenements, trajets, annee, mois, gamelle,
+                    not args.sans_plafond)
+        print(rapport_options(r, r["nu"]["analyse"]["plafond"]))
+        return
     if args.semaines:
         r = par_semaine(grille, evenements, trajets, annee, mois, gamelle,
                         not args.sans_plafond)

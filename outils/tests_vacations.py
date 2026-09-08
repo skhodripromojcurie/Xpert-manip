@@ -903,6 +903,30 @@ class Simulateur(unittest.TestCase):
             if x["riche"]:
                 self.assertGreater(x["riche"]["net_apres_cout"], 0)
 
+    def test_une_nuit_possible_est_signalee_avec_son_plafond(self):
+        """Une occasion qui ferait franchir le plafond n'est pas la même occasion."""
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            self.grille.get("couleur_agenda_par_defaut"))
+        r = simulateur.par_semaine(self.grille, evenements, self.trajets, 2026, 9)
+        nuits = [n for s in r["semaines"] for n in s["nuits_possibles"]]
+        self.assertTrue(nuits, "le fac-similé doit proposer au moins une nuit")
+        for n in nuits:
+            self.assertIn("Rigel", n["site"])       # reconnue par son type
+            self.assertEqual(n["tient"], n["depasse"] <= 0)
+
+    def test_le_tableau_de_simulation(self):
+        """Chaque créneau chiffré seul, classé au net par heure passée."""
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            self.grille.get("couleur_agenda_par_defaut"))
+        o = simulateur.options(self.grille, evenements, self.trajets, 2026, 9)
+        rendements = [x["par_heure_passee"] for x in o["options"]]
+        self.assertEqual(rendements, sorted(rendements, reverse=True))
+        for x in o["options"]:
+            self.assertEqual(x["tient"], x["reste_semaine"] >= 0)
+            self.assertGreater(x["temps"], x["heures"])   # le trajet compte
+
     def test_les_trois_optimisations(self):
         evenements = v.charger_evenements(
             EXEMPLES / "evenements.exemple.json",

@@ -454,11 +454,16 @@ def _semaines(sem):
             net = rendement = "—"
             barre = ""
         occasion = ""
-        if x["nuits_possibles"]:
-            occasion = (f'<br><span class=petit style="color:var(--s1)">Occasion : '
-                        f'nuit Delafontaine le '
-                        f'{", ".join(e(v.format_jour(j)) for j in x["nuits_possibles"])}'
-                        f'</span>')
+        for n in x["nuits_possibles"]:
+            if n["tient"]:
+                occasion += (f'<br><span class=petit style="color:var(--s1)">'
+                             f'Occasion : nuit {e(n["site"])} le '
+                             f'{e(v.format_jour(n["jour"]))}</span>')
+            else:
+                occasion += (f'<br><span class=petit style="color:var(--warn-ink)">'
+                             f'Nuit {e(n["site"])} le {e(v.format_jour(n["jour"]))} : '
+                             f'le repos le permet, le plafond non '
+                             f'(+{e(v.format_heures(n["depasse"]))})</span>')
         autre = x["rentable"]
         if autre and p and autre is not p and autre["temps"]:
             occasion += (f'<br><span class=petit>variante : '
@@ -480,6 +485,54 @@ def _semaines(sem):
                "marginal — l'euro net gagné par heure réellement passée, trajet "
                "compris — et non au revenu : une semaine peut rapporter beaucoup "
                "en coûtant cher.</p></div>")
+    return "".join(out)
+
+
+def _options(opt):
+    """Le menu : chaque créneau libre chiffré seul, du plus au moins rentable."""
+    out = ["<h2 id=options>Tableau de simulation</h2><div class=carte>"
+           '<p class="petit" style="margin:0 0 14px">Chaque créneau libre chiffré '
+           "seul, classé au net par heure passée. « Reste » est ce qu'il laisserait "
+           "dans sa semaine avant le plafond.</p><table>"
+           "<thead><tr><th>Date</th><th>Site</th><th>Séance</th><th class=n>Heures</th>"
+           "<th class=n>Net</th><th class=n>Frais</th><th class=n>Net réel</th>"
+           "<th class=n>Temps</th><th class=n>€/h passée</th>"
+           "<th class=n>Reste</th></tr></thead><tbody>"]
+    haut = max((x["par_heure_passee"] for x in opt["options"]), default=1) or 1
+    for i, x in enumerate(opt["options"]):
+        f = x["fourchette"]
+        net = euros(x["net_apres_cout"])
+        if f["seances"]:
+            net += (f'<br><span class=petit>{e(euros(x["net_apres_cout"] + f["pire"]))}'
+                    f' à {e(euros(x["net_apres_cout"] + f["meilleur"]))}</span>')
+        reste = (e(v.format_heures(x["reste_semaine"])) if x["reste_semaine"] >= 0
+                 else f'<span style="color:var(--crit)">− '
+                      f'{e(v.format_heures(-x["reste_semaine"]))}</span>')
+        out.append(
+            f'<tr class="{"top" if i == 0 else ""}{"" if x["tient"] else " hors"}">'
+            f'<td>{e(v.format_jour(x["jour"]))}<br>'
+            f'<span class=petit>S{x["semaine"]}</span></td>'
+            f'<td>{e(x["seance"].site.libelle)}</td>'
+            f'<td>{e(sim.MOT_DU_TYPE[x["seance"].type_creneau])}</td>'
+            f'<td class=n>{e(v.format_heures(x["heures"]))}</td>'
+            f'<td class=n>{e(euros(x["net"]))}</td>'
+            f'<td class=n>{e(euros(x["cout"]))}</td>'
+            f'<td class=n>{net}</td>'
+            f'<td class=n>{e(v.format_heures(x["temps"]))}<br>'
+            f'<span class=petit>dont {e(v.format_heures(x["trajet"] or 0))} '
+            f'de trajet</span></td>'
+            f'<td class=n>{e(euros(x["par_heure_passee"]))}'
+            f'<span class=jauge><i style="width:'
+            f'{x["par_heure_passee"] / haut * 100:.1f}%"></i></span></td>'
+            f'<td class=n>{reste}</td></tr>')
+    out.append("</tbody></table>")
+    if opt["ecartes"]:
+        out.append(f'<p class="petit" style="margin:14px 0 0">'
+                   f'{len(opt["ecartes"])} créneaux ne sont pas proposés : ils '
+                   f'laisseraient moins de 11 h de repos avec le planning posé. '
+                   f'Une ligne grisée tient côté repos mais ferait franchir le '
+                   f'plafond hebdomadaire.</p>')
+    out.append("</div>")
     return "".join(out)
 
 
@@ -522,7 +575,8 @@ def _scenarios(resultat):
     return "".join(out)
 
 
-def construire(a, sim_resultat=None, rentab=None, simulation=None, sem=None):
+def construire(a, sim_resultat=None, rentab=None, simulation=None, sem=None,
+               opt=None):
     # Une couleur ne se dépense que pour un employeur qui apparaît dans le mois.
     # Un salarié mensualisé sans créneau touche son salaire sans occuper de case :
     # lui donner une teinte encombrerait la légende pour rien, et rapprocherait
@@ -560,6 +614,8 @@ def construire(a, sim_resultat=None, rentab=None, simulation=None, sem=None):
         liens.append(("#rentabilite", "Rentabilité"))
     if sem:
         liens.append(("#parsemaine", "Par semaine"))
+    if opt:
+        liens.append(("#options", "Simulation"))
     if sim_resultat:
         liens.append(("#scenarios", "Scénarios"))
     liens += [("#regarder", "À regarder"), ("#detail", "Détail")]
@@ -613,6 +669,8 @@ def construire(a, sim_resultat=None, rentab=None, simulation=None, sem=None):
         out.append(_rentabilite(*rentab))
     if sem:
         out.append(_semaines(sem))
+    if opt:
+        out.append(_options(opt))
     if sim_resultat:
         out.append(_scenarios(sim_resultat))
     out.append("<h2 id=revenu>Revenu net par employeur</h2><div class=carte><table>"
@@ -777,16 +835,18 @@ def main(argv=None):
     analyse = (simulation["apres"] if simulation
                else v.analyser(grille, evenements, annee, mois, feries))
 
-    rentab = resultat = sem = None
+    rentab = resultat = sem = opt = None
     if args.trajets:
         trajets = sim.charger_trajets(args.trajets)
         rentab = sim.rentabilite(grille, trajets, annee, mois)
         resultat = sim.scenarios(grille, evenements, trajets, annee, mois,
                                  args.cible, feries=feries)
         sem = sim.par_semaine(grille, evenements, trajets, annee, mois)
+        opt = sim.options(grille, evenements, trajets, annee, mois)
     args.sortie.write_text(
         construire(analyse, resultat, rentab, simulation,
-                   sem if args.trajets else None), encoding="utf-8")
+                   sem if args.trajets else None,
+                   opt if args.trajets else None), encoding="utf-8")
     print(f"{args.sortie} écrit.")
 
 
