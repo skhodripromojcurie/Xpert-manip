@@ -430,6 +430,59 @@ def _rentabilite(surs, incertains):
     return "".join(out)
 
 
+def _semaines(sem):
+    """Les semaines classées au rendement : où concentrer son énergie."""
+    out = ["<h2 id=parsemaine>Semaine par semaine</h2><div class=carte><table>"
+           "<thead><tr><th>Semaine</th><th class=n>Fixe</th><th class=n>Marge</th>"
+           "<th>Meilleur ajout</th><th class=n>Net ajouté</th>"
+           "<th class=n>€/h passée</th></tr></thead><tbody>"]
+    haut = max((x["rendement"] for x in sem["semaines"]), default=1) or 1
+    for rang, x in enumerate(sem["semaines"], 1):
+        p = x["riche"]
+        if p:
+            ajout = "<br>".join(
+                f'{e(v.format_jour(y["jour"]))} · '
+                f'{e(sim.MOT_DU_TYPE[y["seance"].type_creneau])} '
+                f'<span class=petit>{e(y["seance"].site.libelle)}</span>'
+                for y in sorted(p["seances"], key=lambda y: y["jour"]))
+            net, rendement = euros(p["net_apres_cout"]), euros(x["rendement"])
+            barre = (f'<span class=jauge><i style="width:'
+                     f'{x["rendement"] / haut * 100:.1f}%"></i></span>')
+        else:
+            ajout = ('<span class=petit>aucun créneau ajoutable — ni jour libre, '
+                     'ni repos suffisant</span>')
+            net = rendement = "—"
+            barre = ""
+        occasion = ""
+        if x["nuits_possibles"]:
+            occasion = (f'<br><span class=petit style="color:var(--s1)">Occasion : '
+                        f'nuit Delafontaine le '
+                        f'{", ".join(e(v.format_jour(j)) for j in x["nuits_possibles"])}'
+                        f'</span>')
+        autre = x["rentable"]
+        if autre and p and autre is not p and autre["temps"]:
+            occasion += (f'<br><span class=petit>variante : '
+                         f'{e(euros(autre["net_apres_cout"]))} en '
+                         f'{e(v.format_heures(autre["temps"]))}, soit '
+                         f'{e(euros(autre["net_apres_cout"] / autre["temps"]))}/h</span>')
+        bord = "" if x["complete"] else ' <span class=petit>(à cheval)</span>'
+        out.append(
+            f'<tr class="{"top" if rang == 1 else ""}">'
+            f'<td><strong>{rang}.</strong> S{x["numero"]}<br>'
+            f'<span class=petit>{x["debut"]:%d/%m}–{x["fin"]:%d/%m}{bord}</span></td>'
+            f'<td class=n>{e(v.format_heures(x["fixe"]))}</td>'
+            f'<td class=n>{e(v.format_heures(max(0, x["marge"])))}</td>'
+            f'<td>{ajout}{occasion}</td>'
+            f'<td class=n>{e(net)}</td>'
+            f'<td class=n>{e(rendement)}{barre}</td></tr>')
+    out.append("</tbody></table>"
+               '<p class="petit" style="margin:14px 0 0">Classées au rendement '
+               "marginal — l'euro net gagné par heure réellement passée, trajet "
+               "compris — et non au revenu : une semaine peut rapporter beaucoup "
+               "en coûtant cher.</p></div>")
+    return "".join(out)
+
+
 def _scenarios(resultat):
     """Les trois optimisations côte à côte, sans qu'aucune soit désignée."""
     out = ["<h2 id=scenarios>Scénarios</h2><div class=sc>"]
@@ -469,7 +522,7 @@ def _scenarios(resultat):
     return "".join(out)
 
 
-def construire(a, sim_resultat=None, rentab=None, simulation=None):
+def construire(a, sim_resultat=None, rentab=None, simulation=None, sem=None):
     # Une couleur ne se dépense que pour un employeur qui apparaît dans le mois.
     # Un salarié mensualisé sans créneau touche son salaire sans occuper de case :
     # lui donner une teinte encombrerait la légende pour rien, et rapprocherait
@@ -505,6 +558,8 @@ def construire(a, sim_resultat=None, rentab=None, simulation=None):
              ("#revenu", "Revenu")]
     if rentab:
         liens.append(("#rentabilite", "Rentabilité"))
+    if sem:
+        liens.append(("#parsemaine", "Par semaine"))
     if sim_resultat:
         liens.append(("#scenarios", "Scénarios"))
     liens += [("#regarder", "À regarder"), ("#detail", "Détail")]
@@ -556,6 +611,8 @@ def construire(a, sim_resultat=None, rentab=None, simulation=None):
     # --- Le revenu ----------------------------------------------------------
     if rentab:
         out.append(_rentabilite(*rentab))
+    if sem:
+        out.append(_semaines(sem))
     if sim_resultat:
         out.append(_scenarios(sim_resultat))
     out.append("<h2 id=revenu>Revenu net par employeur</h2><div class=carte><table>"
@@ -720,14 +777,16 @@ def main(argv=None):
     analyse = (simulation["apres"] if simulation
                else v.analyser(grille, evenements, annee, mois, feries))
 
-    rentab = resultat = None
+    rentab = resultat = sem = None
     if args.trajets:
         trajets = sim.charger_trajets(args.trajets)
         rentab = sim.rentabilite(grille, trajets, annee, mois)
         resultat = sim.scenarios(grille, evenements, trajets, annee, mois,
                                  args.cible, feries=feries)
-    args.sortie.write_text(construire(analyse, resultat, rentab, simulation),
-                           encoding="utf-8")
+        sem = sim.par_semaine(grille, evenements, trajets, annee, mois)
+    args.sortie.write_text(
+        construire(analyse, resultat, rentab, simulation,
+                   sem if args.trajets else None), encoding="utf-8")
     print(f"{args.sortie} écrit.")
 
 

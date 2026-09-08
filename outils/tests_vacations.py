@@ -889,6 +889,20 @@ class Simulateur(unittest.TestCase):
         self.assertTrue(any(s.jour == date(2026, 9, 2) and s.type_creneau == "nuit"
                             for s, _ in ecartes))
 
+    def test_semaines_classees_au_rendement(self):
+        """Le classement suit l'euro par heure passée, pas le revenu."""
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            self.grille.get("couleur_agenda_par_defaut"))
+        r = simulateur.par_semaine(self.grille, evenements, self.trajets, 2026, 9)
+        rendements = [x["rendement"] for x in r["semaines"]]
+        self.assertEqual(rendements, sorted(rendements, reverse=True))
+        for x in r["semaines"]:
+            self.assertLessEqual(x["fixe"] + (x["riche"]["heures"] if x["riche"] else 0),
+                                 max(48.0, x["fixe"]))   # la marge est respectée
+            if x["riche"]:
+                self.assertGreater(x["riche"]["net_apres_cout"], 0)
+
     def test_les_trois_optimisations(self):
         evenements = v.charger_evenements(
             EXEMPLES / "evenements.exemple.json",

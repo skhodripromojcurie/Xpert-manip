@@ -73,6 +73,20 @@ trois résultats sont **exacts**, pas approchés — le rendement passe par le
 paramètre λ (Dinkelbach), qui rend un rapport de sommes séparable ; la cible par
 un sac à dos sur les semaines.
 
+## Semaine par semaine
+
+`--semaines` classe les semaines du mois **au rendement marginal** — l'euro net
+gagné par heure réellement passée, trajet compris — et non au revenu. Une
+semaine peut rapporter beaucoup en coûtant cher ; ce n'est pas là qu'on met son
+énergie.
+
+Chaque semaine donne ses heures fixes, sa marge avant le plafond, la
+combinaison de créneaux la plus rémunératrice qu'elle permette, ce qu'elle
+rapporte net de frais, et les occasions qui ne se présentent que là — une nuit
+qui trouve enfin ses onze heures de repos, par exemple. Quand une autre
+combinaison rend mieux tout en rapportant moins, elle est donnée aussi : le
+choix entre les deux n'appartient pas à l'outil.
+
 ## Ce que le simulateur refuse de proposer
 
 - **Une séance qui casse le repos de 11 h** avec le planning déjà posé. La

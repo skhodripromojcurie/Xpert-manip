@@ -981,6 +981,94 @@ def rapport_scenarios(resultat, plafond):
     return "\n".join(lignes) + "\n"
 
 
+# --------------------------------------------------------------------------
+# Semaine par semaine — où concentrer son énergie
+# --------------------------------------------------------------------------
+
+def par_semaine(grille, evenements, trajets, annee, mois, gamelle=True,
+                plafond=True, feries=()):
+    """Ce que chaque semaine du mois permet, et ce qu'elle rend.
+
+    Le classement se fait au rendement marginal — l'euro net gagné par heure
+    réellement passée, trajet compris — et non au revenu. Une semaine peut
+    rapporter beaucoup en coûtant cher : ce n'est pas là qu'on met son énergie.
+    """
+    nu = evaluer(grille, evenements, trajets, annee, mois, (), feries)
+    analyse = nu["analyse"]
+    liste, ecartes, _ = candidats(grille, trajets, analyse, annee, mois, gamelle)
+    paquets = combinaisons_par_semaine(liste, analyse, plafond)
+
+    lignes = []
+    for cle, semaine in sorted(analyse["semaines"].items()):
+        if not semaine["dans_le_mois"]:
+            continue
+        possibles = [p for p in paquets.get(cle, []) if p["seances"]]
+        riche = max(possibles, key=lambda p: p["net_apres_cout"], default=None)
+        rentable = max(possibles,
+                       key=lambda p: p["net_apres_cout"] / p["temps"] if p["temps"] else 0,
+                       default=None)
+        nuits = sorted({x["jour"] for x in liste
+                        if x["seance"].site.employeur.lower().startswith("hopital")
+                        or "delafontaine" in x["seance"].site.libelle.lower()}
+                       & {semaine["debut"] + timedelta(days=i) for i in range(7)})
+        lignes.append({
+            "annee": cle[0], "numero": cle[1],
+            "debut": semaine["debut"], "fin": semaine["fin"],
+            "fixe": semaine["heures"], "par_employeur": semaine["par_employeur"],
+            "marge": semaine["reste"], "complete": semaine["complete"],
+            "riche": riche, "rentable": rentable,
+            "rendement": (riche["net_apres_cout"] / riche["temps"]
+                          if riche and riche["temps"] else 0.0),
+            "nuits_possibles": nuits,
+            "ecartes": [(s, h) for s, h in ecartes
+                        if semaine["debut"] <= s.jour <= semaine["fin"]],
+        })
+    lignes.sort(key=lambda x: -x["rendement"])
+    return {"nu": nu, "semaines": lignes}
+
+
+def rapport_semaines(resultat, plafond):
+    lignes = [v._titre("Semaine par semaine, de la plus rentable à la moins")]
+    for rang, s in enumerate(resultat["semaines"], 1):
+        bord = "" if s["complete"] else "  (à cheval sur le mois voisin)"
+        lignes.append(
+            f"\n  {rang}. S{s['numero']} · {s['debut']:%d/%m}–{s['fin']:%d/%m}{bord}")
+        detail = ", ".join(f"{nom} {v.format_heures(h)}"
+                           for nom, h in sorted(s["par_employeur"].items()))
+        lignes.append(f"     Planning fixe   {v.format_heures(s['fixe']):>9}"
+                      f"   {detail}")
+        lignes.append(f"     Marge / {v.format_heures(plafond)}    "
+                      f"{v.format_heures(max(0, s['marge'])):>9}")
+        if not s["riche"]:
+            lignes.append("     Aucun créneau ajoutable : ni jour libre, ni "
+                          "repos suffisant.")
+            continue
+        p = s["riche"]
+        lignes.append(f"     Ajout possible  {v.format_heures(p['heures']):>9}"
+                      f"   net {_eur(p['net_apres_cout'])} après "
+                      f"{_eur(p['cout'])} de frais")
+        lignes.append(f"     Rendement       {s['rendement']:>7.2f} €/h passée"
+                      f"   ({v.format_heures(p['temps'])} avec le trajet)")
+        for x in sorted(p["seances"], key=lambda x: x["jour"]):
+            lignes.append(f"       {v.format_jour(x['jour'])} · "
+                          f"{x['seance'].site.libelle} · "
+                          f"{MOT_DU_TYPE[x['seance'].type_creneau]}")
+        autre = s["rentable"]
+        if autre and autre is not p and autre["temps"]:
+            lignes.append(
+                f"     Variante plus rentable mais moins rémunératrice : "
+                f"{_eur(autre['net_apres_cout'])} en "
+                f"{v.format_heures(autre['temps'])}, soit "
+                f"{autre['net_apres_cout'] / autre['temps']:.2f} €/h passée")
+        if s["nuits_possibles"]:
+            lignes.append("     Occasion : nuit Delafontaine possible le "
+                          + ", ".join(v.format_jour(j) for j in s["nuits_possibles"]))
+        elif s["ecartes"]:
+            lignes.append(f"     {len(s['ecartes'])} créneaux écartés faute de "
+                          f"11 h de repos.")
+    return "\n".join(lignes) + "\n"
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--grille", type=Path, default=v.GRILLE)
@@ -993,6 +1081,8 @@ def main(argv=None):
                    help="compter un repas payé à chaque séance ajoutée")
     p.add_argument("--sans-plafond", action="store_true",
                    help="laisser les scénarios dépasser les 48 h hebdomadaires")
+    p.add_argument("--semaines", action="store_true",
+                   help="détail semaine par semaine, classé au rendement")
     p.add_argument("--rentabilite", action="store_true",
                    help="n'afficher que le classement des sites")
     p.add_argument("--json", action="store_true")
@@ -1011,6 +1101,11 @@ def main(argv=None):
 
     evenements = v.charger_evenements(args.evenements,
                                       grille.get("couleur_agenda_par_defaut"))
+    if args.semaines:
+        r = par_semaine(grille, evenements, trajets, annee, mois, gamelle,
+                        not args.sans_plafond)
+        print(rapport_semaines(r, r["nu"]["analyse"]["plafond"]))
+        return
     resultat = scenarios(grille, evenements, trajets, annee, mois, args.cible,
                          gamelle, not args.sans_plafond)
     if args.json:
