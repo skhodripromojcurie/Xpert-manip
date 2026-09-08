@@ -35,6 +35,22 @@ Le coût kilométrique est du carburant seul (4,5 L/100 km à 2 €/L, soit
 0,09 €/km) : ni péage, ni usure. Le repas vaut 0 € avec gamelle, sinon le
 montant de `repas.montant_eur`.
 
+## Deux durées, et d'où elles sortent
+
+Le trafic n'est pas le même le samedi et en semaine. Un site peut donc porter
+`duree_domicile_min_aller_samedi` et `duree_domicile_min_aller_semaine` plutôt
+qu'une seule `duree_domicile_min_aller` ; le simulateur prend celle du jour de
+la séance.
+
+Chaque durée porte aussi sa provenance, déduite de `note_duree` — **mesurée**
+(« temps réel constaté »), **extrapolée** (un ratio appliqué à une estimation),
+ou **théorique**. Une note peut couvrir les deux régimes : elle est coupée à
+« en semaine » pour ne pas prêter au samedi la fiabilité de la semaine.
+
+La déduction ne s'appuie que sur des marqueurs positifs. Le mot « mesure » seul
+ne dit rien : il apparaît aussi bien dans « pas une mesure » que dans « aucun
+des deux n'est mesuré », où le lire comme une confirmation inverse le sens.
+
 ## Les trois optimisations
 
 Elles ne donnent pas la même réponse, et aucune n'est désignée « la bonne ».

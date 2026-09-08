@@ -48,6 +48,27 @@ MOT_DU_TYPE = {"matin": "matin", "apres_midi": "aprèm", "journee": "journée",
 # Les lieux et ce qu'ils coûtent
 # --------------------------------------------------------------------------
 
+# D'où sort une durée de trajet. Le rapport le dit, parce qu'un temps mesuré et
+# un temps extrapolé ne se lisent pas de la même façon.
+MESUREE, EXTRAPOLEE, THEORIQUE = "mesurée", "extrapolée", "théorique"
+
+
+def _fiabilite(note):
+    """Déduit d'où sort une durée, d'après la note qui l'accompagne.
+
+    On ne se fie qu'à des marqueurs positifs — « temps réel », « constaté ». Le
+    mot « mesure » seul ne dit rien : il apparaît aussi bien dans « pas une
+    mesure » que dans « aucun des deux n'est mesuré », où le lire comme une
+    confirmation inverse le sens.
+    """
+    plat = v.normaliser(note)
+    if "temps reel" in plat or "constate" in plat:
+        return MESUREE
+    if "extrapol" in plat or "ratio" in plat:
+        return EXTRAPOLEE
+    return THEORIQUE
+
+
 @dataclass
 class Site:
     employeur: str
@@ -55,9 +76,14 @@ class Site:
     adresse: str
     stationnement: str
     km_aller: float = None
-    minutes_aller: float = None
+    # Le trafic n'est pas le même le samedi et en semaine : deux durées, deux
+    # fiabilités. Un site qui n'en donne qu'une la porte dans les deux cases.
+    minutes: dict = field(default_factory=dict)
+    fiabilite: dict = field(default_factory=dict)
     stationnement_eur: float = None
     stationnement_incertain: bool = False
+    stationnement_approx: str = ""
+    note_duree: str = ""
 
     @property
     def libelle(self):
@@ -67,12 +93,20 @@ class Site:
     def trajet_connu(self):
         return self.km_aller is not None
 
-    @property
-    def heures_trajet(self):
+    @staticmethod
+    def _regime(jour):
+        return "samedi" if jour is not None and jour.weekday() >= 5 else "semaine"
+
+    def minutes_aller(self, jour=None):
+        return self.minutes.get(self._regime(jour))
+
+    def fiabilite_duree(self, jour=None):
+        return self.fiabilite.get(self._regime(jour), THEORIQUE)
+
+    def heures_trajet(self, jour=None):
         """Aller-retour, en heures. None tant que la durée n'est pas renseignée."""
-        if self.minutes_aller is None:
-            return None
-        return 2 * self.minutes_aller / 60.0
+        minutes = self.minutes_aller(jour)
+        return None if minutes is None else 2 * minutes / 60.0
 
 
 @dataclass
@@ -102,25 +136,42 @@ def charger_trajets(chemin):
     for brut in d.get("sites", []):
         stationnement = brut.get("stationnement") or "non précisé"
         plat = v.normaliser(stationnement)
+        note = brut.get("note_duree") or ""
+        # Une note peut couvrir deux régimes (« samedi … / en semaine … ») : on
+        # la coupe pour ne pas prêter au samedi la fiabilité de la semaine.
+        moities = v.normaliser(note).split("en semaine")
+        commun = brut.get("duree_domicile_min_aller")
+        minutes = {
+            "samedi": brut.get("duree_domicile_min_aller_samedi", commun),
+            "semaine": brut.get("duree_domicile_min_aller_semaine", commun),
+        }
+        explicite = brut.get("fiabilite_duree")
+        fiabilite = {
+            "samedi": explicite or _fiabilite(moities[0]),
+            "semaine": explicite or _fiabilite(moities[-1]),
+        }
         site = Site(
             employeur=brut.get("employeur", ""), site=brut.get("site") or "",
             adresse=brut.get("adresse", ""), stationnement=stationnement,
             km_aller=brut.get("distance_domicile_km_aller"),
-            minutes_aller=brut.get("duree_domicile_min_aller"),
+            minutes=minutes, fiabilite=fiabilite, note_duree=note,
             stationnement_eur=brut.get("stationnement_eur"),
-            # « variable », « selon la place », « non précisé » : on ne chiffre
-            # pas ce qu'on ne sait pas. Le site est traité à part plutôt que
-            # crédité d'un zéro qui fausserait son classement.
-            stationnement_incertain=any(
+            stationnement_approx=brut.get("stationnement_note") or "")
+        # Un montant donné vaut mieux qu'un adjectif : il lève l'incertitude.
+        # Sans montant, « variable », « selon la place », « non précisé » ne se
+        # chiffrent pas — le site est traité à part plutôt que crédité d'un zéro
+        # qui fausserait son classement.
+        if site.stationnement_eur is None:
+            site.stationnement_incertain = any(
                 mot in plat for mot in ("variable", "selon", "non precise",
-                                        "difficile", "incertain")))
-        if site.stationnement_eur is None and "gratuit" in plat and not site.stationnement_incertain:
-            site.stationnement_eur = 0.0
+                                        "incertain"))
+            if "gratuit" in plat and not site.stationnement_incertain:
+                site.stationnement_eur = 0.0
         sites.append(site)
         if not site.trajet_connu:
             alertes.append(f"{site.libelle} : distance domicile non renseignée — "
                            f"ni carburant ni rendement calculables pour ce site.")
-        elif site.minutes_aller is None:
+        elif site.minutes_aller() is None:
             alertes.append(f"{site.libelle} : durée de trajet non renseignée — "
                            f"le revenu par heure passée n'est pas calculable.")
         if site.stationnement_eur is None and not site.stationnement_incertain:
@@ -241,7 +292,7 @@ def valeur_seance(seance, grille, regles, trajets, annee, mois):
         return None
     vac = a["vacations"][0]
     carburant, stationnement, repas, cout, manque = cout_seance(seance, trajets)
-    trajet_h = seance.site.heures_trajet
+    trajet_h = seance.site.heures_trajet(seance.jour)
     net = vac["montant"]
     return {
         "seance": seance, "vacation": vac,
@@ -288,6 +339,7 @@ def rentabilite(grille, trajets, annee, mois, gamelle=True):
                     "repas": valeur["repas"],
                     "net_apres_cout": valeur["net_apres_cout"],
                     "heures_trajet": valeur["heures_trajet"],
+                    "fiabilite": site.fiabilite_duree(seance.jour),
                     "par_heure_travaillee": valeur["net_apres_cout"] / valeur["heures"],
                     "par_heure_passee": (
                         None if valeur["heures_passees"] is None
@@ -374,9 +426,15 @@ def couts_du_planning(analyse, trajets):
         if not vac["heures_mois"]:
             continue
         nom = v.normaliser(vac["regle"].cle_employeur)
-        candidats = par_employeur.get(nom) or [
-            s for cle, liste in par_employeur.items() for s in liste
-            if set(cle.split()) & set(nom.split())]
+        candidats = par_employeur.get(nom)
+        if not candidats:
+            jetons = _distinctifs(nom)
+            meilleur, score = None, 0
+            for cle, liste in par_employeur.items():
+                commun = len(jetons & _distinctifs(cle))
+                if commun > score:
+                    meilleur, score = liste, commun
+            candidats = meilleur or []
         if not candidats:
             inconnus.append(vac["regle"].libelle)
             continue
@@ -395,8 +453,9 @@ def couts_du_planning(analyse, trajets):
             site = nomme or min(chiffrables, key=lambda s: s.km_aller)
             cout = trajets.carburant(site) + (site.stationnement_eur or 0.0)
             total += cout
-            if site.heures_trajet:
-                trajet_h += site.heures_trajet
+            heures = site.heures_trajet(jour)
+            if heures:
+                trajet_h += heures
             bloc = details.setdefault(site.libelle, {"jours": 0, "cout": 0.0})
             bloc["jours"] += 1
             bloc["cout"] += cout

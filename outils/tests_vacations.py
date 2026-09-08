@@ -638,7 +638,8 @@ class Simulateur(unittest.TestCase):
         self.assertEqual(self.trajets.cout_par_km, 0.09)
         vega = self.par_nom["Cabinet Vega — Bourg-Nord"]
         self.assertEqual(vega.km_aller, 10)
-        self.assertEqual(round(vega.heures_trajet, 4), round(40 / 60, 4))
+        self.assertEqual(round(vega.heures_trajet(date(2026, 9, 2)), 4),
+                         round(40 / 60, 4))
         self.assertEqual(vega.stationnement_eur, 0.0)      # « gratuit » vaut zéro
 
     def test_un_stationnement_variable_n_est_pas_zero(self):
@@ -715,6 +716,66 @@ class Simulateur(unittest.TestCase):
         self.assertEqual(
             simulateur.evaluer(grille, ev, self.trajets, 2026, 9)["titres_sans_site"],
             [])
+
+    def test_une_duree_par_regime_de_trafic(self):
+        """Le samedi et la semaine n'ont pas le même trafic, donc pas la même durée."""
+        site = simulateur.charger_trajets(EXEMPLES / "trajets.exemple.json").sites[0]
+        self.assertEqual(site.minutes_aller(date(2026, 11, 4)), 20)
+        brut = {"employeur": "X", "site": None, "adresse": "",
+                "stationnement": "gratuit", "distance_domicile_km_aller": 30,
+                "duree_domicile_min_aller_samedi": 51,
+                "duree_domicile_min_aller_semaine": 85}
+        import json as _json, tempfile, os
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
+                                         encoding="utf-8") as f:
+            _json.dump({"sites": [brut], "cout_kilometrique": {"cout_par_km_eur": 0.09},
+                        "repas": {"montant_eur": 10}}, f)
+            chemin = f.name
+        try:
+            s = simulateur.charger_trajets(chemin).sites[0]
+            self.assertEqual(s.minutes_aller(date(2026, 11, 7)), 51)   # un samedi
+            self.assertEqual(s.minutes_aller(date(2026, 11, 4)), 85)   # un mercredi
+            self.assertEqual(round(s.heures_trajet(date(2026, 11, 7)), 2), 1.70)
+        finally:
+            os.unlink(chemin)
+
+    def test_une_negation_n_est_pas_une_confirmation(self):
+        """« Aucun des deux n'est mesuré » ne fait pas d'une durée une mesure."""
+        self.assertEqual(simulateur._fiabilite("temps reel constate le matin"),
+                         simulateur.MESUREE)
+        self.assertEqual(simulateur._fiabilite("ratio x1.7 applique"),
+                         simulateur.EXTRAPOLEE)
+        self.assertEqual(
+            simulateur._fiabilite("ratio x1.7. Aucun des deux n'est mesure sur "
+                                  "le terrain."),
+            simulateur.EXTRAPOLEE)
+        self.assertEqual(simulateur._fiabilite("estimation theorique"),
+                         simulateur.THEORIQUE)
+
+    def test_un_montant_leve_l_incertitude_du_stationnement(self):
+        """« 5 à 8 € selon la durée » avec un montant retenu n'est plus incertain."""
+        import json as _json, tempfile, os
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
+                                         encoding="utf-8") as f:
+            _json.dump({"sites": [
+                {"employeur": "X", "site": None, "adresse": "",
+                 "stationnement": "payant (parcmètre), 5 à 8 EUR selon durée",
+                 "stationnement_eur": 6.5, "distance_domicile_km_aller": 21,
+                 "duree_domicile_min_aller": 60},
+                {"employeur": "Y", "site": None, "adresse": "",
+                 "stationnement": "variable, selon la place trouvée",
+                 "distance_domicile_km_aller": 10, "duree_domicile_min_aller": 20}],
+                "cout_kilometrique": {"cout_par_km_eur": 0.09},
+                "repas": {"montant_eur": 10}}, f)
+            chemin = f.name
+        try:
+            avec, sans = simulateur.charger_trajets(chemin).sites
+            self.assertFalse(avec.stationnement_incertain)
+            self.assertEqual(avec.stationnement_eur, 6.5)
+            self.assertTrue(sans.stationnement_incertain)
+            self.assertIsNone(sans.stationnement_eur)
+        finally:
+            os.unlink(chemin)
 
     def test_rentabilite_classee_et_separee(self):
         surs, incertains = simulateur.rentabilite(self.grille, self.trajets, 2026, 9)
