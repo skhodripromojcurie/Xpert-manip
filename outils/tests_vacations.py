@@ -947,6 +947,26 @@ class Simulateur(unittest.TestCase):
         for s in r["scenarios"]:
             self.assertEqual(len(s["depassements"]), len(nu["depassements"]))
 
+    def test_le_plafond_de_verre_du_mois(self):
+        """« Tous les jours libres » ignore le plafond, mais l'affiche."""
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            self.grille.get("couleur_agenda_par_defaut"))
+        r = simulateur.scenarios(self.grille, evenements, self.trajets, 2026, 9)
+        plein = r["scenarios"][-1]
+        self.assertEqual(plein["nom"], "Tous les jours libres")
+        # Il ne peut pas rapporter moins que l'optimum sous contrainte.
+        revenu = next(s for s in r["scenarios"] if s["nom"] == "Revenu maximal")
+        self.assertGreaterEqual(plein["net_apres_cout"], revenu["net_apres_cout"])
+        # Le plafond n'est plus un filtre : il est seulement compté.
+        self.assertGreaterEqual(len(plein["depassements"]),
+                                len(revenu["depassements"]))
+        # Une séance par jour entièrement libre, jamais deux.
+        jours = [x.jour for x in plein["seances"]]
+        self.assertEqual(len(jours), len(set(jours)))
+        # Et le repos reste respecté : c'est le plafond qu'on lève, pas la loi.
+        self.assertEqual(plein["repos"], [])
+
     def test_une_cible_hors_d_atteinte_est_annoncee(self):
         evenements = v.charger_evenements(
             EXEMPLES / "evenements.exemple.json",
