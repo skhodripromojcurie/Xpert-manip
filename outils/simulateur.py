@@ -589,7 +589,8 @@ def candidats(grille, trajets, analyse, annee, mois, gamelle=True,
                 if not (valeur and valeur["net"]):
                     continue
                 if respecter_repos:
-                    avec = fixes + [{"creneaux": valeur["creneaux"], "regle": _bidon}]
+                    avec = fixes + [{"creneaux": valeur["creneaux"],
+                                     "regle": regle}]
                     manques = v.repos_insuffisants(avec, analyse["repos_minimum"])
                     if len(manques) > repos_de_base:
                         ecartes.append((seance, min(m["heures"] for m in manques)))
@@ -828,8 +829,8 @@ def remplir_jours_libres(grille, trajets, analyse, annee, mois,
             # C'est le plafond qu'on lève ici, pas le repos : onze heures entre
             # deux journées restent un minimum légal, pas une préférence.
             avant = [{"creneaux": list(poses), "regle": _bidon}]
-            apres = [{"creneaux": poses + list(valeur["creneaux"]),
-                      "regle": _bidon}]
+            apres = [{"creneaux": list(poses), "regle": _bidon},
+                     {"creneaux": list(valeur["creneaux"]), "regle": regle}]
             if (len(v.repos_insuffisants(apres, analyse["repos_minimum"]))
                     > len(v.repos_insuffisants(avant, analyse["repos_minimum"]))):
                 ecartes.append(seance)

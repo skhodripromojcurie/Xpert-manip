@@ -210,6 +210,13 @@ Deux règles, toutes deux en alerte, aucune bloquante. Elles se règlent dans
 | `pause_maximale_heures` | 4 | au-delà, une coupure n'est plus une pause |
 | `amplitude_maximale_heures` | 13 | au-delà, ce sont deux journées, pas une |
 
+**Une astreinte accolée occupe sans être payée en heures.** Un employeur qui
+enchaîne une vacation et une astreinte sur place le déclare par
+`"astreinte_jusqu_a": "7h30"` : les heures payées restent celles de la
+vacation, mais le repos ne commence qu'à cette heure-là. Sans quoi une journée
+finie à 20 h paraît laisser onze heures avant le lendemain 9 h, alors que la
+personne n'est libre qu'à 7 h 30 — et l'écart réel est d'une heure et demie.
+
 Le repos quotidien est la règle que le cumul d'employeurs casse en premier —
 bien avant le plafond hebdomadaire. Une nuit finie à 7 h et une vacation qui
 reprend à 8 h 30 laissent une heure et demie, pas onze.

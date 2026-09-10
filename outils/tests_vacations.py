@@ -390,6 +390,57 @@ class ReposQuotidien(unittest.TestCase):
         self.assertEqual(len(v.repos_insuffisants(vac, minimum=13.0)), 1)
 
 
+class AstreinteAccolee(unittest.TestCase):
+    """Une astreinte sur place ne se paie pas en heures, mais elle occupe."""
+
+    GRILLE = {
+        "employeurs": [
+            {"nom": "CH", "taux_net_heure": 35, "creneau_type": "9h-20h",
+             "astreinte_jusqu_a": "7h30", "duree_type": ["journee"],
+             "jours_possibles": ["lundi", "mardi", "mercredi", "jeudi",
+                                 "vendredi", "samedi", "dimanche"]},
+            {"nom": "Cabinet", "taux_net_heure": 28}],
+        "identification_agenda_google": {
+            "ch": {"methode": "texte", "mot_cle": "CH",
+                   "duree_par_defaut": "journee",
+                   "creneaux_par_defaut": {"journee": "9h-20h"}},
+            "cabinet": {"methode": "texte", "mot_cle": "Cabinet",
+                        "duree_par_defaut": "journee"}},
+    }
+
+    def _ev(self, titre, jour):
+        return v.Evenement(titre, titre, datetime(2026, 11, jour),
+                           datetime(2026, 11, jour + 1), True, None, False)
+
+    def test_l_astreinte_prolonge_le_creneau_pour_le_repos(self):
+        a = v.analyser(self.GRILLE, [self._ev("CH", 12)], 2026, 11)
+        vac = a["vacations"][0]
+        # Les heures payées restent celles de la vacation…
+        self.assertEqual(vac["heures"], 11.0)
+        # …mais le repos ne commence qu'à la fin de l'astreinte.
+        creneaux = v.creneaux_pour_repos(vac)
+        self.assertEqual(max(c[1] for c in creneaux),
+                         datetime(2026, 11, 13, 7, 30))
+
+    def test_le_lendemain_matin_devient_impossible(self):
+        """9h-20h puis astreinte jusqu'à 7h30, et un 8h le lendemain : 30 min."""
+        a = v.analyser(self.GRILLE,
+                       [self._ev("CH", 12), self._ev("Cabinet", 13)], 2026, 11)
+        manques = a["repos_insuffisants"]
+        self.assertEqual(len(manques), 1)
+        self.assertEqual(manques[0]["heures"], 1.5)   # 7h30 → 9h
+
+    def test_un_lendemain_libre_laisse_le_repos(self):
+        a = v.analyser(self.GRILLE,
+                       [self._ev("CH", 12), self._ev("Cabinet", 14)], 2026, 11)
+        self.assertEqual(a["repos_insuffisants"], [])
+
+    def test_sans_astreinte_le_creneau_n_est_pas_prolonge(self):
+        vac = v.analyser(self.GRILLE, [self._ev("Cabinet", 12)],
+                         2026, 11)["vacations"][0]
+        self.assertEqual(v.creneaux_pour_repos(vac), vac["creneaux"])
+
+
 class SalarieMensualise(unittest.TestCase):
     """Un mensualisé touche son mois : ses heures ne se tarifent pas."""
 

@@ -292,6 +292,9 @@ class Regle:
     restrictions: dict = field(default_factory=dict)   # jour -> créneau imposé
     exige_horaire: bool = False
     compte_plafond: bool = True
+    # Heure à laquelle une astreinte accolée libère la personne. Elle ne compte
+    # pas dans les heures travaillées, mais elle repousse le début du repos.
+    astreinte_jusqu_a: tuple = None
     date_debut: date = None
     alertes: list = field(default_factory=list)
 
@@ -413,6 +416,10 @@ def construire_regles(grille):
         # Une astreinte est du temps de disponibilité, pas du travail effectif :
         # ses heures ne pèsent pas sur le plafond hebdomadaire, sauf mention
         # contraire dans la grille.
+        accolee = (emp or {}).get("astreinte_jusqu_a")
+        if accolee:
+            plage = lire_plage(f"0h-{accolee}")[0]
+            regle.astreinte_jusqu_a = (plage[2], plage[3]) if plage else None
         regle.compte_plafond = bool((emp or {}).get(
             "compte_dans_plafond", "astreinte" not in normaliser((emp or {}).get("type"))))
         regle.date_debut = (
@@ -890,6 +897,32 @@ def analyser(grille, evenements, annee, mois, feries=()):
     }
 
 
+def creneaux_pour_repos(vac):
+    """Les créneaux, plus l'astreinte qui les suit s'il y en a une.
+
+    Une astreinte sur place ne se paie pas en heures travaillées, mais elle
+    occupe : le repos ne commence qu'à sa fin. Sans elle, une journée finie à
+    20 h paraît laisser onze heures avant le lendemain 9 h, alors que la
+    personne n'est libre qu'à 7 h 30.
+    """
+    creneaux = list(vac["creneaux"])
+    fin = vac.get("regle") and getattr(vac["regle"], "astreinte_jusqu_a", None)
+    if not fin or not creneaux:
+        return creneaux
+    dernier = max(c[1] for c in creneaux)
+    liberation = datetime.combine(dernier.date() + timedelta(days=1),
+                                  datetime.min.time()).replace(hour=fin[0],
+                                                               minute=fin[1])
+    if liberation <= dernier:
+        return creneaux
+    # On prolonge le dernier créneau plutôt que d'en ajouter un : l'astreinte
+    # est la continuation de la même présence. Ajoutée à côté, elle passerait
+    # pour une seconde journée collée à la première, et l'écart nul entre les
+    # deux se lirait comme un repos de zéro heure.
+    return [c for c in creneaux if c[1] != dernier] + [
+        (min(c[0] for c in creneaux if c[1] == dernier), liberation)]
+
+
 def periodes_de_travail(vacations, pause_maximale=PAUSE_MAXIMALE_DEFAUT,
                         amplitude_maximale=AMPLITUDE_MAXIMALE_DEFAUT):
     """Fusionne les créneaux qu'une simple pause sépare.
@@ -901,7 +934,8 @@ def periodes_de_travail(vacations, pause_maximale=PAUSE_MAXIMALE_DEFAUT,
     D'où la seconde condition : au-delà de l'amplitude d'une journée de travail,
     on a affaire à deux journées, pas à une seule entrecoupée.
     """
-    plats = sorted(((c[0], c[1], v) for v in vacations for c in v["creneaux"]),
+    plats = sorted(((c[0], c[1], v) for v in vacations
+                    for c in creneaux_pour_repos(v)),
                    key=lambda x: (x[0], x[1]))
     periodes = []
     for debut, fin, vac in plats:
