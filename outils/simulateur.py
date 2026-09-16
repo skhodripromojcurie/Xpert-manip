@@ -289,15 +289,11 @@ def cout_seance(seance, trajets):
 # Ce que vaut une séance, et ce qu'elle prend
 # --------------------------------------------------------------------------
 
-# « Imagerie », « Clinique », « Hôpital » ne distinguent personne : deux
-# employeurs différents les partagent. Les retenir dans l'appariement faisait
-# passer « Résonance Imagerie » pour « Crystal Imagerie ».
-MOTS_GENERIQUES = {"imagerie", "clinique", "hopital", "groupe", "centre",
-                   "cabinet", "des", "de", "la", "le", "du", "ap-hp"}
-
-
-def _distinctifs(nom):
-    return {mot for mot in v.normaliser(nom).split() if mot not in MOTS_GENERIQUES}
+# Les mots qui ne distinguent personne vivent dans `vacations` : l'appariement
+# des sites et la détection des employeurs mal reconnus doivent la même liste,
+# sous peine de diverger un jour sans que rien ne le signale.
+MOTS_GENERIQUES = v.MOTS_GENERIQUES
+_distinctifs = v.mots_distinctifs
 
 
 def _regle_du_site(site, regles):

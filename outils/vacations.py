@@ -450,6 +450,67 @@ def construire_regles(grille):
     return regles
 
 
+# « Imagerie », « Clinique », « Hôpital » ne distinguent personne : deux
+# employeurs différents les partagent. Les retenir dans l'appariement ferait
+# passer « Résonance Imagerie » pour « Crystal Imagerie ».
+MOTS_GENERIQUES = {"imagerie", "clinique", "hopital", "groupe", "centre",
+                   "cabinet", "des", "de", "la", "le", "du", "ap-hp"}
+
+# Ces mots-là disent *quand*, pas *qui*. Un employeur peut les prendre comme
+# mots-clés faute de mieux, mais les traiter comme un nom ferait crier au loup
+# sur chaque titre qui précise sa demi-journée.
+MOTS_CRENEAU = ({cle for cle, _ in MOTS_DUREE}
+                | {mot for _, variantes in MOTS_DUREE for mot in variantes}
+                | set(ABREVIATIONS_AMBIGUES) | {"midi", "apres", "soir"})
+
+
+def mots_distinctifs(nom):
+    """Les mots d'un nom d'employeur qui le distinguent vraiment des autres."""
+    return {mot for mot in normaliser(nom).split() if mot not in MOTS_GENERIQUES}
+
+
+def appellations(regle):
+    """Tout ce sous quoi un employeur peut raisonnablement être écrit.
+
+    Son nom, son libellé, ses mots-clés — moins ce qui ne nomme personne. Le
+    seuil de quatre lettres évite qu'une initiale serve de nom propre.
+    """
+    noms = (mots_distinctifs(regle.cle_employeur) | mots_distinctifs(regle.libelle)
+            | {m for m in regle.mots_cles if m})
+    return {n for n in noms
+            if len(n) >= 4 and n not in MOTS_GENERIQUES and n not in MOTS_CRENEAU}
+
+
+def employeur_suspect(ev, retenue, regles):
+    """Renvoie (jeton, règle) si le titre nomme un autre employeur que le retenu.
+
+    Le cas réel : « Nuit delaf 20h30-6h30 » est parti chez l'employeur dont
+    « nuit » est un mot-clé, parce que la grille écrivait « delafontaine » en
+    entier et que l'agenda abrège. Le titre nommait pourtant son employeur ;
+    c'est le dictionnaire qui était incomplet. Rien dans le rapport ne le
+    disait, et vingt heures se sont retrouvées payées zéro sans un mot.
+
+    On ne corrige pas — la grille reste la seule autorité sur qui paie quoi.
+    On signale, pour que la correction soit faite là où elle appartient.
+    """
+    jetons = [m for m in re.findall(r"[a-z]{4,}", normaliser(ev.titre))
+              if m not in MOTS_GENERIQUES and m not in MOTS_CRENEAU]
+    if not jetons:
+        return None, None
+    connus = appellations(retenue) if retenue is not None else set()
+    for jeton in jetons:
+        # Un jeton que l'employeur retenu revendique déjà ne prouve rien.
+        if any(jeton.startswith(n) or n.startswith(jeton) for n in connus):
+            continue
+        for regle in regles:
+            if regle is retenue:
+                continue
+            for nom in appellations(regle):
+                if nom.startswith(jeton) or jeton.startswith(nom):
+                    return jeton, regle
+    return None, None
+
+
 def mots_cles_par_priorite(regles):
     """Les mots-clés du plus long au plus court, tous employeurs mêlés.
 
@@ -731,10 +792,14 @@ def analyser(grille, evenements, annee, mois, feries=()):
 
     alertes = [a for r in regles for a in r.alertes]
     mots = mots_cles_par_priorite(regles)
-    vacations, autres = [], []
+    vacations, autres, attributions = [], [], []
 
     for ev in evenements:
         regle, motif = identifier(ev, regles, mots)
+        jeton, autre = employeur_suspect(ev, regle, regles)
+        if autre is not None:
+            attributions.append({"evenement": ev, "retenue": regle, "motif": motif,
+                                 "jeton": jeton, "suspect": autre})
         if regle is None:
             autres.append(ev)
             if (ev.couleur and any(ev.couleur in r.couleurs for r in regles)
@@ -889,6 +954,7 @@ def analyser(grille, evenements, annee, mois, feries=()):
         "semaines": dict(sorted(semaines.items())),
         "par_employeur": par_employeur,
         "chevauchements": chevauchements(vacations, autres),
+        "attributions_douteuses": attributions,
         "alertes": alertes,
         "debut_mois": debut_mois, "fin_mois": fin_mois,
         "debut_lecture": min((e.debut.date() for e in evenements), default=debut_mois),
@@ -1273,6 +1339,18 @@ def rapport_texte(a):
                 f"{format_jour(r['debut'].date())} {r['debut']:%H:%M} "
                 f"({', '.join(r['apres'])}).")
 
+    if a["attributions_douteuses"]:
+        lignes.append(_titre("Attribution douteuse"))
+        for d in a["attributions_douteuses"]:
+            ev, suspect = d["evenement"], d["suspect"]
+            ou = (f"compté chez {d['retenue'].libelle} ({d['motif']})"
+                  if d["retenue"] else "rattaché à aucun employeur")
+            lignes.append(
+                f"  ⚠ « {ev.titre} » ({format_jour(ev.jours[0])}) — {ou}, "
+                f"alors que « {d['jeton']} » ressemble au nom de {suspect.libelle}. "
+                f"Ajouter « {d['jeton']} » aux mots-clés de {suspect.libelle} "
+                f"si c'est bien lui.")
+
     if a["alertes"]:
         lignes.append(_titre("À confirmer"))
         for texte in dict.fromkeys(a["alertes"]):
@@ -1346,6 +1424,14 @@ def rapport_json(a):
             "avant": r["avant"], "apres": r["apres"],
         } for r in a["repos_insuffisants"]],
         "evenements_non_reconnus": [e.titre for e in a["autres"]],
+        "attributions_douteuses": [{
+            "titre": d["evenement"].titre,
+            "jour": jour(d["evenement"].jours[0]),
+            "employeur_retenu": d["retenue"].libelle if d["retenue"] else None,
+            "motif": d["motif"],
+            "mot_du_titre": d["jeton"],
+            "employeur_suspecte": d["suspect"].libelle,
+        } for d in a["attributions_douteuses"]],
         "alertes": list(dict.fromkeys(a["alertes"])),
     }
 

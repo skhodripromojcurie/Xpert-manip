@@ -58,6 +58,15 @@ reconnues au titre passeraient à la trappe. D'où l'ordre.
   **La priorité se joue mot par mot, pas employeur par employeur** : le mot le
   plus long gagne. Un employeur reconnu à des mots génériques (`matin`, `aprem`)
   ne rafle donc pas « Crystal matin » — `crystal` est plus précis que `matin`.
+- **Abréviation non couverte** : si le titre contient un mot qui ressemble au
+  nom d'un *autre* employeur que celui retenu, l'outil le signale sous
+  « Attribution douteuse ». C'est le rattrapage du cas où la grille écrit le nom
+  en entier et l'agenda l'abrège : `« Nuit delaf »` part alors chez l'employeur
+  dont `nuit` est un mot-clé, et les heures sortent au mauvais tarif sans que
+  rien ne le dise. L'outil ne corrige pas — la grille reste seule à décider qui
+  paie quoi — il dit quel mot-clé ajouter. Les mots qui désignent un *moment*
+  (`matin`, `nuit`, `journée`…) et ceux qui ne distinguent personne
+  (`imagerie`, `clinique`, `hôpital`…) ne comptent pas comme des noms.
 - **Couleur explicite** (`colorId` posé) : la couleur suffit.
 - **Couleur héritée** (pas de `colorId`) : elle ne porte aucune intention, donc
   le titre doit être **purement horaire** (`8-19h` oui, `Rentrée 9h30` non).

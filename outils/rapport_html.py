@@ -776,7 +776,19 @@ def construire(a, sim_resultat=None, rentab=None, simulation=None, sem=None,
                          f"{', '.join(f'{j:%d/%m}' for j in sorted(set(jours)))}.")
     infos += [e(x) for x in dict.fromkeys(a["alertes"])]
 
+    douteux = []
+    for d in a["attributions_douteuses"]:
+        ev, suspect = d["evenement"], d["suspect"]
+        ou = (f"compté chez <strong>{e(d['retenue'].libelle)}</strong> "
+              f"({e(d['motif'])})" if d["retenue"]
+              else "rattaché à <strong>aucun employeur</strong>")
+        douteux.append(f"« {e(ev.titre)} » ({e(v.format_jour(ev.jours[0]))}) — {ou}, "
+                       f"alors que « {e(d['jeton'])} » ressemble au nom de "
+                       f"<strong>{e(suspect.libelle)}</strong>. Ajouter "
+                       f"« {e(d['jeton'])} » à ses mots-clés si c'est bien lui.")
+
     groupes = [("g-crit", "Impossible en l'état", graves),
+               ("g-crit", "Attribution douteuse", douteux),
                ("g-warn", "Au-dessus des limites", legaux),
                ("g-info", "À vérifier", infos)]
     if any(p for _, _, p in groupes):

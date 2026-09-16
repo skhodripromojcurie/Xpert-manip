@@ -1032,5 +1032,83 @@ class Simulateur(unittest.TestCase):
         self.assertEqual(cible["seances"], [])
 
 
+class AbreviationNonReconnue(unittest.TestCase):
+    """Un titre qui nomme son employeur, mais sous un nom absent de la grille.
+
+    Cas vécu : la grille écrivait le nom en entier, l'agenda l'abrégeait, et
+    c'est un mot-clé générique d'un tout autre employeur qui a ramassé le
+    créneau. Vingt heures sont sorties payées zéro, sans une ligne d'alerte.
+    L'outil ne devine pas à la place de la grille — mais il doit le dire.
+    """
+
+    GRILLE = {
+        "employeurs": [{"nom": "Vega", "taux_net_heure": 28},
+                       {"nom": "Rigel", "taux_net_heure": 30},
+                       {"nom": "Hopital", "taux_net_heure": 20}],
+        "identification_agenda_google": {
+            "vega": {"methode": "texte", "mot_cle": "Vega",
+                     "duree_par_defaut": "journee"},
+            "rigel": {"methode": "texte", "mot_cle": "Rigel",
+                      "duree_par_defaut": "nuit"},
+            "hopital": {"methode": "texte",
+                        "mots_cles": ["matin", "aprem", "nuit"],
+                        "duree_par_defaut": "matin"}},
+    }
+
+    def _analyser(self, titre, grille=None):
+        ev = v.Evenement("1", titre, datetime(2026, 9, 2), datetime(2026, 9, 3),
+                         True, None, False)
+        return v.analyser(grille or self.GRILLE, [ev], 2026, 9)
+
+    def test_une_abreviation_captee_par_un_mot_generique_est_signalee(self):
+        a = self._analyser("Nuit rige 21h-7h")
+        # L'attribution elle-même ne change pas : la grille reste l'autorité.
+        self.assertEqual(a["vacations"][0]["regle"].libelle, "Hopital")
+        douteux = a["attributions_douteuses"]
+        self.assertEqual(len(douteux), 1)
+        self.assertEqual(douteux[0]["jeton"], "rige")
+        self.assertEqual(douteux[0]["suspect"].libelle, "Rigel")
+        self.assertEqual(douteux[0]["retenue"].libelle, "Hopital")
+
+    def test_le_mot_cle_complete_fait_taire_l_alerte(self):
+        grille = json.loads(json.dumps(self.GRILLE))
+        grille["identification_agenda_google"]["rigel"]["mots_cles"] = \
+            ["rigel", "rige"]
+        a = self._analyser("Nuit rige 21h-7h", grille)
+        self.assertEqual(a["vacations"][0]["regle"].libelle, "Rigel")
+        self.assertEqual(a["attributions_douteuses"], [])
+
+    def test_un_titre_non_reconnu_qui_nomme_un_employeur_est_signale(self):
+        """Sans mot-clé générique pour le ramasser, le créneau disparaît."""
+        a = self._analyser("Rige 21h-7h")
+        self.assertEqual(a["vacations"], [])
+        douteux = a["attributions_douteuses"]
+        self.assertEqual(len(douteux), 1)
+        self.assertIsNone(douteux[0]["retenue"])
+        self.assertEqual(douteux[0]["suspect"].libelle, "Rigel")
+
+    def test_un_mot_de_creneau_ne_fait_pas_un_nom_d_employeur(self):
+        """« Rigel nuit » ne doit pas accuser l'employeur dont « nuit » est le mot-clé."""
+        a = self._analyser("Rigel nuit")
+        self.assertEqual(a["vacations"][0]["regle"].libelle, "Rigel")
+        self.assertEqual(a["attributions_douteuses"], [])
+
+    def test_le_rapport_texte_porte_la_correction_a_faire(self):
+        a = self._analyser("Nuit rige 21h-7h")
+        texte = v.rapport_texte(a)
+        self.assertIn("Attribution douteuse", texte)
+        self.assertIn("rige", texte)
+        self.assertIn("Rigel", texte)
+
+    def test_aucune_alerte_sur_les_exemples(self):
+        """Le fac-similé est correct : pas une seule attribution douteuse."""
+        grille = json.loads((EXEMPLES / "grille.exemple.json").read_text("utf-8"))
+        evenements = v.charger_evenements(
+            EXEMPLES / "evenements.exemple.json",
+            grille.get("couleur_agenda_par_defaut"))
+        a = v.analyser(grille, evenements, 2026, 9)
+        self.assertEqual(a["attributions_douteuses"], [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
