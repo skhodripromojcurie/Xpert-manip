@@ -581,9 +581,15 @@ def construire(a, sim_resultat=None, rentab=None, simulation=None, sem=None,
     # Un salarié mensualisé sans créneau touche son salaire sans occuper de case :
     # lui donner une teinte encombrerait la légende pour rien, et rapprocherait
     # deux teintes voisines de la palette sans nécessité.
+    # Une semaine à cheval sur le mois voisin affiche les heures qu'on y a faites
+    # pour un employeur absent du mois analysé : la barre le montre, il lui faut
+    # donc une couleur. L'oublier faisait planter la page — sur un mois où
+    # personne ne débordait, le cas ne s'était jamais présenté.
     couleurs = {}
     presents = [nom for nom in sorted(a["par_employeur"])
                 if a["par_employeur"][nom]["heures"] > 0]
+    presents += sorted({nom for s in a["semaines"].values() if s["dans_le_mois"]
+                        for nom in s["par_employeur"]} - set(presents))
     for i, nom in enumerate(presents):
         couleurs[nom] = f"var(--s{i + 1})" if i < SERIES else "var(--axis)"
     for nom in a["par_employeur"]:

@@ -1110,5 +1110,29 @@ class AbreviationNonReconnue(unittest.TestCase):
         self.assertEqual(a["attributions_douteuses"], [])
 
 
+class SemaineACheval(unittest.TestCase):
+    """Une semaine à cheval montre un employeur absent du mois analysé."""
+
+    def test_la_page_ne_plante_pas_sur_un_employeur_hors_mois(self):
+        grille = {"employeurs": [{"nom": "Vega", "taux_net_heure": 28},
+                                 {"nom": "Rigel", "taux_net_heure": 30}],
+                  "identification_agenda_google": {
+                      "vega": {"methode": "texte", "mot_cle": "Vega",
+                               "duree_par_defaut": "journee"},
+                      "rigel": {"methode": "texte", "mot_cle": "Rigel",
+                                "duree_par_defaut": "journee"}}}
+        # Vega ne travaille que le 29/10, Rigel qu'en novembre : la semaine
+        # S44 (26/10-01/11) porte les deux, le mois de novembre un seul.
+        evenements = [
+            v.Evenement("1", "Vega journée", datetime(2026, 10, 29),
+                        datetime(2026, 10, 30), True, None, False),
+            v.Evenement("2", "Rigel journée", datetime(2026, 11, 3),
+                        datetime(2026, 11, 4), True, None, False)]
+        a = v.analyser(grille, evenements, 2026, 11)
+        self.assertNotIn("Vega", a["par_employeur"])
+        page = rapport_html.construire(a, None, None, None)
+        self.assertIn("Vega", page)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
